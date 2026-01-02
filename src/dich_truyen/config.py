@@ -1,0 +1,101 @@
+"""Configuration management with environment variables and CLI overrides."""
+
+from pathlib import Path
+from typing import Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class LLMConfig(BaseSettings):
+    """LLM/OpenAI configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="OPENAI_")
+
+    api_key: str = Field(default="", description="OpenAI API key")
+    base_url: str = Field(default="https://api.openai.com/v1", description="API base URL")
+    model: str = Field(default="gpt-4o", description="Model name")
+    max_tokens: int = Field(default=4096, description="Max tokens per request")
+    temperature: float = Field(default=0.7, description="Temperature for generation")
+
+
+class CrawlerConfig(BaseSettings):
+    """Crawler configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="CRAWLER_")
+
+    delay_ms: int = Field(default=1000, description="Delay between requests in ms")
+    max_retries: int = Field(default=3, description="Max retry attempts")
+    timeout_seconds: int = Field(default=30, description="Request timeout in seconds")
+    user_agent: str = Field(
+        default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        description="User agent string",
+    )
+
+
+class TranslationConfig(BaseSettings):
+    """Translation configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="TRANSLATION_")
+
+    chunk_size: int = Field(default=2000, description="Characters per translation chunk")
+    concurrent_requests: int = Field(default=3, description="Concurrent translation requests")
+
+
+class CalibreConfig(BaseSettings):
+    """Calibre configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="CALIBRE_")
+
+    path: str = Field(default="ebook-convert", description="Path to ebook-convert")
+
+
+class AppConfig(BaseSettings):
+    """Main application configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="")
+
+    log_level: str = Field(default="INFO", description="Logging level")
+    books_dir: Path = Field(default=Path("books"), description="Books output directory")
+
+    # Sub-configs
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+    crawler: CrawlerConfig = Field(default_factory=CrawlerConfig)
+    translation: TranslationConfig = Field(default_factory=TranslationConfig)
+    calibre: CalibreConfig = Field(default_factory=CalibreConfig)
+
+    @classmethod
+    def load(cls, env_file: Optional[Path] = None) -> "AppConfig":
+        """Load configuration from environment and .env file."""
+        from dotenv import load_dotenv
+
+        if env_file and env_file.exists():
+            load_dotenv(env_file)
+        else:
+            # Try to find .env in current directory or parent directories
+            load_dotenv()
+
+        return cls(
+            llm=LLMConfig(),
+            crawler=CrawlerConfig(),
+            translation=TranslationConfig(),
+            calibre=CalibreConfig(),
+        )
+
+
+# Global config instance (lazy loaded)
+_config: Optional[AppConfig] = None
+
+
+def get_config() -> AppConfig:
+    """Get the global configuration instance."""
+    global _config
+    if _config is None:
+        _config = AppConfig.load()
+    return _config
+
+
+def set_config(config: AppConfig) -> None:
+    """Set the global configuration instance."""
+    global _config
+    _config = config
