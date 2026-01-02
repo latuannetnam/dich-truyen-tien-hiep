@@ -358,17 +358,41 @@ async def setup_translation(
     if auto_glossary and len(glossary) == 0:
         console.print("[blue]Generating glossary from sample chapters...[/blue]")
 
-        # Read first few chapters as samples
+        # Get config values
+        config = get_config().translation
+        sample_chapter_count = config.glossary_sample_chapters
+        sample_size = config.glossary_sample_size
+        random_sample = config.glossary_random_sample
+        min_entries = config.glossary_min_entries
+        max_entries = config.glossary_max_entries
+
+        # Read chapters for sampling
         raw_dir = book_dir / "raw"
+        all_files = sorted(raw_dir.glob("*.txt"))
+        
+        # Select sample chapters
+        if random_sample and len(all_files) > sample_chapter_count:
+            import random
+            sample_files = random.sample(all_files, sample_chapter_count)
+            console.print(f"[dim]  Randomly selected {sample_chapter_count} chapters from {len(all_files)} available[/dim]")
+        else:
+            sample_files = all_files[:sample_chapter_count]
+            console.print(f"[dim]  Using first {len(sample_files)} chapters[/dim]")
+        
         samples = []
-        for txt_file in sorted(raw_dir.glob("*.txt"))[:3]:
+        for txt_file in sample_files:
             with open(txt_file, "r", encoding="utf-8") as f:
                 content = f.read()
-                # Take first 2000 chars from each
-                samples.append(content[:2000])
+                # Take configured chars from each
+                samples.append(content[:sample_size])
 
         if samples:
-            glossary = await generate_glossary_from_samples(samples, glossary)
+            glossary = await generate_glossary_from_samples(
+                samples, 
+                glossary,
+                min_entries=min_entries,
+                max_entries=max_entries,
+            )
             glossary.save(book_dir)
             console.print(f"[green]Generated {len(glossary)} glossary entries[/green]")
 

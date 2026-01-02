@@ -223,7 +223,7 @@ def format_book(
 @click.option(
     "--format",
     "output_format",
-    default="epub",
+    default="azw3",
     type=click.Choice(["epub", "azw3", "mobi", "pdf"]),
     help="Output format",
 )
@@ -265,7 +265,7 @@ def export(
 @click.option(
     "--format",
     "output_format",
-    default="epub",
+    default="azw3",
     type=click.Choice(["epub", "azw3", "mobi", "pdf"]),
     help="Output format",
 )

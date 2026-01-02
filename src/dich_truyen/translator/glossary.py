@@ -230,11 +230,11 @@ GLOSSARY_GENERATION_PROMPT = """Phân tích các đoạn văn tiểu thuyết Tr
 {sample_texts}
 
 ## Yêu cầu
-Trích xuất các thuật ngữ theo danh mục:
-1. **character** - Tên nhân vật (人物)
+Trích xuất TỐI THIỂU {min_entries} thuật ngữ theo danh mục:
+1. **character** - Tên nhân vật (人物) - ưu tiên nhân vật chính và phụ quan trọng
 2. **realm** - Cảnh giới tu luyện (境界)
 3. **technique** - Võ công/Pháp thuật (武功/法术)
-4. **location** - Địa danh (地点)
+4. **location** - Địa danh (地点) - thành phố, môn phái, núi sông
 5. **item** - Vật phẩm/Pháp bảo (法宝/神器)
 6. **organization** - Môn phái/Thế lực (门派/势力)
 
@@ -255,12 +255,16 @@ Trả về CHÍNH XÁC JSON array, không có markdown:
 async def generate_glossary_from_samples(
     sample_texts: list[str],
     existing_glossary: Optional[Glossary] = None,
+    min_entries: int = 20,
+    max_entries: int = 100,
 ) -> Glossary:
     """Use LLM to generate glossary from sample texts.
 
     Args:
         sample_texts: List of sample text excerpts
         existing_glossary: Existing glossary to merge with
+        min_entries: Minimum number of entries to request
+        max_entries: Maximum entries to keep
 
     Returns:
         Generated glossary
@@ -270,12 +274,15 @@ async def generate_glossary_from_samples(
     llm = LLMClient()
 
     # Combine sample texts
-    combined = "\n\n---\n\n".join(sample_texts[:5])  # Limit to 5 samples
+    combined = "\n\n---\n\n".join(sample_texts)
 
-    prompt = GLOSSARY_GENERATION_PROMPT.format(sample_texts=combined)
+    prompt = GLOSSARY_GENERATION_PROMPT.format(
+        sample_texts=combined,
+        min_entries=min_entries,
+    )
 
     response = await llm.complete(
-        system_prompt="Bạn là chuyên gia phân tích tiểu thuyết Trung Quốc. Trả về JSON chính xác.",
+        system_prompt="Bạn là chuyên gia phân tích tiểu thuyết Trung Quốc. Trả về JSON chính xác với nhiều thuật ngữ nhất có thể.",
         user_prompt=prompt,
         temperature=0.3,
     )
@@ -294,6 +301,10 @@ async def generate_glossary_from_samples(
             entries = []
     else:
         entries = []
+
+    # Limit to max_entries
+    if len(entries) > max_entries:
+        entries = entries[:max_entries]
 
     # Create or merge with existing
     if existing_glossary:

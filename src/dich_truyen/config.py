@@ -40,6 +40,13 @@ class TranslationConfig(BaseSettings):
 
     chunk_size: int = Field(default=2000, description="Characters per translation chunk")
     concurrent_requests: int = Field(default=3, description="Concurrent translation requests")
+    
+    # Glossary generation settings
+    glossary_sample_chapters: int = Field(default=5, description="Number of chapters to sample for glossary")
+    glossary_sample_size: int = Field(default=3000, description="Characters to take from each sample chapter")
+    glossary_min_entries: int = Field(default=20, description="Minimum glossary entries to generate")
+    glossary_max_entries: int = Field(default=100, description="Maximum glossary entries to keep")
+    glossary_random_sample: bool = Field(default=True, description="Randomly select sample chapters")
 
 
 class CalibreConfig(BaseSettings):

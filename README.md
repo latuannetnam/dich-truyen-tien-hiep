@@ -15,7 +15,7 @@ A command-line tool for crawling, translating, and exporting Chinese novels to V
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/dich-truyen-tien-hiep.git
+git clone https://github.com/latuannetnam/dich-truyen-tien-hiep.git
 cd dich-truyen-tien-hiep
 
 # Install with uv
@@ -37,35 +37,109 @@ Required settings:
 ```env
 OPENAI_API_KEY=your-api-key
 OPENAI_BASE_URL=https://api.openai.com/v1  # or compatible endpoint
-OPENAI_MODEL=gpt-4o
+OPENAI_MODEL=gpt-4.1
 ```
 
 ## Quick Start
 
-### Full Pipeline
+### Full Pipeline (Simplest)
+
+Process an entire book in one command:
 
 ```bash
+# Default: crawl all chapters, translate, format, export to EPUB
+uv run dich-truyen pipeline --url "https://www.piaotia.com/html/8/8717/index.html"
+
+# Translate first 10 chapters only, export to Kindle format
 uv run dich-truyen pipeline \
   --url "https://www.piaotia.com/html/8/8717/index.html" \
-  --style tien_hiep \
-  --format epub \
-  --chapters 1-10
+  --chapters 1-10 \
+  --format azw3
+
+# Use custom style and force re-process
+uv run dich-truyen pipeline \
+  --url "https://example.com/novel/index.html" \
+  --style kiem_hiep \
+  --chapters 1-50 \
+  --format pdf \
+  --force
 ```
 
-### Phase by Phase
+### Individual Commands (More Control)
+
+#### Use Case 1: Download only (no translation yet)
 
 ```bash
-# Phase 1: Crawl chapters
-uv run dich-truyen crawl --url "https://www.piaotia.com/html/8/8717/index.html"
+# Just crawl chapters 1-100 for later translation
+uv run dich-truyen crawl \
+  --url "https://www.piaotia.com/html/8/8717/index.html" \
+  --chapters 1-100
 
-# Phase 2: Translate
-uv run dich-truyen translate --book-dir books/html-8-8717 --style tien_hiep
+# Crawl with forced encoding for problematic sites
+uv run dich-truyen crawl \
+  --url "https://example.com/novel/" \
+  --encoding gbk
+```
 
-# Phase 3: Format to HTML
-uv run dich-truyen format --book-dir books/html-8-8717 --translator "AI"
+#### Use Case 2: Translate specific chapters
 
-# Phase 4: Export to EPUB
-uv run dich-truyen export --book-dir books/html-8-8717 --format epub
+```bash
+# Translate chapters 1-10 with default style
+uv run dich-truyen translate \
+  --book-dir books/8717-indexhtml \
+  --chapters 1-10
+
+# Translate with custom glossary (expert mode)
+uv run dich-truyen translate \
+  --book-dir books/8717-indexhtml \
+  --glossary my-custom-glossary.csv \
+  --style huyen_huyen \
+  --no-auto-glossary
+
+# Force re-translate chapters with different style
+uv run dich-truyen translate \
+  --book-dir books/8717-indexhtml \
+  --chapters 1-5 \
+  --style kiem_hiep \
+  --force
+```
+
+#### Use Case 3: Custom book metadata
+
+```bash
+# Format with custom title and translator name
+uv run dich-truyen format \
+  --book-dir books/8717-indexhtml \
+  --title "Kiếm Lai" \
+  --author "Phong Hỏa Hí Chư Hầu" \
+  --translator "AI Translator" \
+  --cover cover.jpg
+```
+
+#### Use Case 4: Export to different formats
+
+```bash
+# Export to Kindle (AZW3)
+uv run dich-truyen export --book-dir books/8717-indexhtml --format azw3
+
+# Export to PDF for printing
+uv run dich-truyen export --book-dir books/8717-indexhtml --format pdf
+
+# Export with custom Calibre path
+uv run dich-truyen export \
+  --book-dir books/8717-indexhtml \
+  --format epub \
+  --calibre-path "C:/Program Files/Calibre2/ebook-convert.exe"
+```
+
+#### Use Case 5: Resume interrupted work
+
+```bash
+# Continue downloading where you left off
+uv run dich-truyen crawl --url "https://..." --resume
+
+# Continue translating (default behavior)
+uv run dich-truyen translate --book-dir books/8717-indexhtml
 ```
 
 ## Command Reference
@@ -76,11 +150,12 @@ uv run dich-truyen export --book-dir books/html-8-8717 --format epub
 uv run dich-truyen crawl [OPTIONS]
 
 Options:
-  --url TEXT          Book index page URL (required)
-  --book-dir PATH     Book directory
-  --chapters TEXT     Chapter range, e.g., "1-100" or "1,5,10-20"
-  --encoding TEXT     Force encoding (auto-detect if not set)
+  --url TEXT            Book index page URL (required)
+  --book-dir PATH       Book directory
+  --chapters TEXT       Chapter range, e.g., "1-100" or "1,5,10-20"
+  --encoding TEXT       Force encoding (auto-detect if not set)
   --resume/--no-resume  Resume interrupted download (default: resume)
+  --force               Force re-download even if already downloaded
 ```
 
 ### `translate` - Translate chapters
@@ -89,12 +164,14 @@ Options:
 uv run dich-truyen translate [OPTIONS]
 
 Options:
-  --book-dir PATH     Book directory (required)
-  --style TEXT        Style template (default: tien_hiep)
-  --glossary PATH     Import glossary from CSV
-  --auto-glossary/--no-auto-glossary  Auto-generate glossary (default: on)
-  --chunk-size INT    Characters per translation chunk
+  --book-dir PATH       Book directory (required)
+  --chapters TEXT       Chapter range, e.g., "1-100" or "1,5,10-20"
+  --style TEXT          Style template (default: tien_hiep)
+  --glossary PATH       Import glossary from CSV
+  --auto-glossary       Auto-generate glossary (default: on)
+  --chunk-size INT      Characters per translation chunk
   --resume/--no-resume  Resume interrupted translation
+  --force               Force re-translate even if already translated
 ```
 
 ### `format` - Assemble HTML book
