@@ -146,12 +146,14 @@ class TranslationEngine:
         self,
         chapter_path: Path,
         output_path: Path,
+        progress_callback=None,
     ) -> str:
         """Translate an entire chapter file.
 
         Args:
             chapter_path: Path to source chapter file
             output_path: Path to save translated chapter
+            progress_callback: Optional callback for progress updates (chunk_idx, total_chunks)
 
         Returns:
             Translated chapter content
@@ -162,17 +164,22 @@ class TranslationEngine:
 
         # Split into chunks
         chunks = self.chunk_text(content)
+        total_chunks = len(chunks)
 
         # Translate each chunk with context
         translated_chunks = []
         context = None
 
-        for chunk in chunks:
+        for idx, chunk in enumerate(chunks, 1):
             translated = await self.translate_chunk(chunk, context)
             translated_chunks.append(translated)
 
             # Use last ~500 chars as context for next chunk
             context = translated[-500:] if len(translated) > 500 else translated
+            
+            # Report progress AFTER chunk is translated
+            if progress_callback:
+                progress_callback(idx, total_chunks)
 
         # Combine translated chunks
         result = "\n\n".join(translated_chunks)
@@ -256,7 +263,18 @@ class TranslationEngine:
             failed=0,
         )
 
-        # Translate with progress bar
+        # Pre-calculate total chunks for accurate progress tracking
+        console.print("[dim]Calculating total chunks...[/dim]")
+        total_chunks = 0
+        for chapter in chapters_to_translate:
+            source_files = list(raw_dir.glob(f"{chapter.index:04d}_*.txt"))
+            if source_files:
+                with open(source_files[0], "r", encoding="utf-8") as f:
+                    content = f.read()
+                chunks = self.chunk_text(content)
+                total_chunks += len(chunks)
+
+        # Translate with progress bar (tracking chunks not chapters)
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -264,12 +282,11 @@ class TranslationEngine:
             TaskProgressColumn(),
             console=console,
         ) as pbar:
-            task = pbar.add_task("Translating", total=len(chapters_to_translate))
+            task = pbar.add_task("Translating", total=total_chunks)
 
             for chapter in chapters_to_translate:
-                pbar.update(
-                    task, description=f"Ch.{chapter.index}: {chapter.title_cn[:20]}..."
-                )
+                chapter_desc = f"Ch.{chapter.index}: {chapter.title_cn[:20]}..."
+                pbar.update(task, description=chapter_desc)
 
                 try:
                     # Find source file
@@ -281,8 +298,15 @@ class TranslationEngine:
                     # Use simple naming: chapter_number.txt
                     output_path = translated_dir / f"{chapter.index}.txt"
 
-                    # Translate chapter content
-                    await self.translate_chapter(source_path, output_path)
+                    # Progress callback for chunk-level updates
+                    def update_chunk_progress(chunk_idx, total_chunks_in_chapter):
+                        desc = f"Ch.{chapter.index}: {chapter.title_cn[:15]}... [{chunk_idx}/{total_chunks_in_chapter} chunks]"
+                        pbar.update(task, description=desc)
+                        # Advance progress bar by 1 for each chunk
+                        pbar.advance(task, 1)
+
+                    # Translate chapter content with chunk progress
+                    await self.translate_chapter(source_path, output_path, update_chunk_progress)
 
                     # Translate chapter title if not already done
                     if chapter.title_cn and not chapter.title_vi:
@@ -306,8 +330,6 @@ class TranslationEngine:
                 # Save progress periodically
                 if result.translated % 5 == 0:
                     progress.save(book_dir)
-
-                pbar.advance(task)
 
         # Final save
         progress.save(book_dir)
