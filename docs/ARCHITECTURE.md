@@ -34,6 +34,8 @@ The application follows a 4-phase pipeline architecture:
 | **Config** | `config.py` | Pydantic settings & env vars |
 | **Progress** | `utils/progress.py` | BookProgress & status data models |
 
+---
+
 ## Phase 1: Crawling
 
 ### LLM-Powered Pattern Discovery
@@ -51,11 +53,6 @@ patterns = await llm.analyze_index_page(html)
 # 3. Extract chapter list using discovered selector
 chapters = soup.select(patterns.chapter_selector)
 ```
-
-**Key files:**
-- `crawler/pattern.py` - `PatternDiscovery` class uses LLM to find CSS selectors
-- `crawler/downloader.py` - `ChapterDownloader` handles downloading with resume support
-- `crawler/base.py` - HTTP client with retry logic and encoding auto-detection
 
 ### Content Extraction Flow
 
@@ -89,6 +86,8 @@ if len(content) < 100:
     # Filter navigation patterns (上一章, 下一章, etc.)
 ```
 
+---
+
 ## Phase 2: Translation
 
 ### Translation Engine Architecture
@@ -103,114 +102,18 @@ if len(content) < 100:
 │  │             │    │           │    │                  │  │
 │  │ - guidelines│    │ - entries │    │ - OpenAI SDK     │  │
 │  │ - vocabulary│    │ - lookup  │    │ - retry logic    │  │
-│  │ - examples  │    │ - export  │    │ - chunk context  │  │
+│  │ - examples  │    │ - export  │    │ - parallel calls │  │
 │  └─────────────┘    └───────────┘    └──────────────────┘  │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Chunk-Based Translation (Parallel)
-
-Large chapters are split into chunks and translated **in parallel** for speed:
-
-```
-Chapter Text:  [====Chunk1====][====Chunk2====][====Chunk3====]
-                      ↓              ↓              ↓
-Context:           (none)    ←300 chars→    ←300 chars→
-                      ↓              ↓              ↓
-               ┌─────────────────────────────────────────┐
-               │   Parallel Translation (semaphore)      │
-               │   TRANSLATION_CONCURRENT_REQUESTS=3     │
-               └─────────────────────────────────────────┘
-                      ↓              ↓              ↓
-Output:        [==Trans1==] + [==Trans2==] + [==Trans3==]
-```
-
-```python
-# 1. Create chunks with context from previous chunk (Chinese source)
-chunks_with_context = create_chunks_with_context(content)
-# Each chunk has: {"main_text": "...", "context_text": "last 300 chars of prev"}
-
-# 2. Translate all chunks in parallel (limited by semaphore)
-semaphore = asyncio.Semaphore(config.concurrent_requests)  # default: 3
-
-async def translate_with_limit(chunk_data, index):
-    async with semaphore:
-        return await translate_chunk(chunk_data["main_text"], 
-                                      context=chunk_data["context_text"])
-
-results = await asyncio.gather(*[translate_with_limit(c, i) for i, c in enumerate(chunks)])
-
-# 3. Sort by index and combine
-results.sort(key=lambda x: x[0])
-final_text = "\n\n".join(results)
-```
-
-**Key design decisions:**
-- Context uses **source Chinese** text (not translated output) to enable parallel processing
-- Each chunk receives ~300 chars from previous chunk for narrative continuity
-- Semaphore limits concurrent API calls to respect rate limits
-- Results sorted by index to maintain correct order
-
-### Smart Dialogue Chunking
-
-Dialogue blocks are kept together to preserve conversation context:
-
-```
-Detection patterns:
-- Chinese quotes: "" 「」
-- Attribution: 说道, 道：, 问道, 笑道, 叫道
-
-Behavior:
-┌──────────────────────────────────────────┐
-│ "你是谁？"陈平安问道。                    │  ← Dialogue block
-│ "我是落落。"                              │    kept together
-│ 少女轻声答道。                            │
-└──────────────────────────────────────────┘
-```
-
-```python
-def _is_dialogue_paragraph(para: str) -> bool:
-    has_quotes = '"' in para or '「' in para
-    has_attribution = any(m in para for m in ['说道', '道：', '问道'])
-    return has_quotes or has_attribution
-
-def chunk_text(text):
-    # 1. Detect dialogue blocks (consecutive dialogue paragraphs)
-    # 2. Keep short narration (<100 chars) between dialogues in same block
-    # 3. Allow 20% chunk overflow to avoid splitting conversations
-```
-
-### Progressive Glossary Building
-
-New terms are extracted during translation to build glossary incrementally:
-
-```
-Ch.1 translated...
-  +2 new glossary terms (刘羡阳 → Lưu Tiện Dương, 骊珠洞天 → Ly Châu Động Thiên)
-Ch.2 translated...
-  +1 new glossary terms (宁姚 → Ninh Diêu)
-```
-
-```python
-# After each chapter translation:
-if config.progressive_glossary:
-    new_terms = await extract_new_terms_from_chapter(
-        chinese_text, existing_glossary, max_new_terms=3
-    )
-    glossary.add(new_terms)
-    glossary.save(book_dir)  # Auto-save after each chapter
-```
-
-**Key design decisions:**
-- Only analyzes first 2000 chars per chapter (token efficiency)
-- Compares against existing glossary to avoid duplicates
-- Extracts 3-5 most important new terms per chapter
-- Silently fails if extraction fails (non-blocking enhancement)
-
 ### Style Template System
 
-Style templates define translation behavior:
+Style templates define translation behavior and are loaded with priority:
+
+1. **Custom styles** in `styles/` directory (checked first)
+2. **Built-in styles** (fallback)
 
 ```yaml
 name: tien_hiep
@@ -228,49 +131,92 @@ examples:
     vietnamese: "Ngươi là ai"
 ```
 
-**Priority order when loading styles:**
-1. Custom styles in `styles/` directory (checked first)
-2. Built-in styles (fallback)
+### Glossary System
 
-This allows users to override built-in styles by creating a YAML file with the same name.
-
-### Style Generation Mechanism
-
-The `style generate` command creates custom styles using LLM:
-
-1. **Input**: User provides a Vietnamese description (e.g., "Văn phong ngôn tình, lãng mạn")
-2. **Prompt Construction**: System prompts LLM to generate a JSON structure containing:
-   - `guidelines`: 5-7 specific translation rules
-   - `vocabulary`: 10-15 key term mappings
-   - `examples`: 3-4 sample translations
-   - `tone`: archaic/formal/casual
-3. **YAML Serialization**: Validates JSON via Pydantic model and saves as YAML file in `styles/`
-
-### Glossary Auto-Generation
+#### Initial Glossary Generation
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │              Glossary Generation Pipeline                 │
 ├──────────────────────────────────────────────────────────┤
+│  1. Sample Selection                                      │
+│     Select N random chapters (GLOSSARY_SAMPLE_CHAPTERS)  │
 │                                                           │
-│  1. Random Sample Selection                               │
-│     TRANSLATION_GLOSSARY_SAMPLE_CHAPTERS=5               │
-│     Select 5 random chapters from available chapters     │
+│  2. Extract Content                                       │
+│     Take first M chars from each (GLOSSARY_SAMPLE_SIZE)  │
 │                                                           │
-│  2. Extract Sample Content                                │
-│     TRANSLATION_GLOSSARY_SAMPLE_SIZE=3000                │
-│     Take first 3000 chars from each sample               │
+│  3. LLM Analysis (batched to avoid token limits)          │
+│     Process in batches of 5 samples                       │
+│     Request character names, locations, terms             │
 │                                                           │
-│  3. LLM Analysis                                          │
-│     Send samples to LLM with structured prompt           │
-│     Request MIN_ENTRIES to MAX_ENTRIES terms             │
-│                                                           │
-│  4. Parse & Save                                          │
-│     Parse JSON response                                   │
-│     Save to glossary.csv                                  │
-│                                                           │
+│  4. Merge & Save                                          │
+│     Deduplicate entries, save to glossary.csv            │
 └──────────────────────────────────────────────────────────┘
 ```
+
+#### Progressive Glossary Building
+
+New terms are extracted during translation to build glossary incrementally:
+
+```
+Ch.1 translated...
+  +2 new glossary terms (刘羡阳 → Lưu Tiện Dương)
+Ch.2 translated...
+  +1 new glossary terms (宁姚 → Ninh Diêu)
+```
+
+```python
+# After each chapter translation (if TRANSLATION_PROGRESSIVE_GLOSSARY=true):
+new_terms = await extract_new_terms_from_chapter(
+    chinese_text, existing_glossary, max_new_terms=3
+)
+glossary.add(new_terms)
+glossary.save(book_dir)  # Auto-save after each chapter
+```
+
+### Smart Dialogue Chunking
+
+Dialogue blocks are kept together to preserve conversation context:
+
+```
+Detection patterns:
+- Chinese quotes: "" 「」
+- Attribution markers: 说道, 道：, 问道, 笑道, 叫道
+
+Behavior:
+┌──────────────────────────────────────────┐
+│ "你是谁？"陈平安问道。                    │  ← Dialogue block
+│ "我是落落。"                              │    kept together
+│ 少女轻声答道。                            │
+└──────────────────────────────────────────┘
+```
+
+- Consecutive dialogue paragraphs form a block
+- Short narration (<100 chars) between dialogues stays in block
+- Allow 20% chunk overflow to avoid splitting conversations
+
+### Parallel Chunk Translation
+
+Large chapters are split into chunks and translated **in parallel** for speed:
+
+```
+Chapter Text:  [====Chunk1====][====Chunk2====][====Chunk3====]
+                      ↓              ↓              ↓
+Context:           (none)    ←300 chars→    ←300 chars→
+                      ↓              ↓              ↓
+               ┌─────────────────────────────────────────┐
+               │   Parallel Translation (semaphore)      │
+               │   TRANSLATION_CONCURRENT_REQUESTS=3     │
+               └─────────────────────────────────────────┘
+                      ↓              ↓              ↓
+Output:        [==Trans1==] + [==Trans2==] + [==Trans3==]
+```
+
+**Key design decisions:**
+- Context uses **source Chinese** text (not translated output) to enable parallel processing
+- Each chunk receives ~300 chars from previous chunk for narrative continuity
+- Semaphore limits concurrent API calls to respect rate limits
+- Results sorted by index to maintain correct order
 
 ### Translation Prompt Structure
 
@@ -287,21 +233,23 @@ The `style generate` command creates custom styles using LLM:
 │ Vocabulary:                             │
 │ - 修炼 → tu luyện                       │
 │ - 灵气 → linh khí                       │
-│                                         │
-│ Glossary:                               │
-│ - 陈平安 → Trần Bình An                  │
 └─────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────┐
 │            USER PROMPT                  │
 ├─────────────────────────────────────────┤
+│ Glossary (mandatory terms):             │
+│ - 陈平安 → Trần Bình An                  │
+│                                         │
 │ Context (from previous chunk):          │
-│ "...last 500 chars of previous..."      │
+│ "...last 300 chars of Chinese source..."│
 │                                         │
 │ Text to translate:                      │
 │ [current chunk content]                 │
 └─────────────────────────────────────────┘
 ```
+
+---
 
 ## Phase 3: Formatting
 
@@ -310,7 +258,7 @@ The `style generate` command creates custom styles using LLM:
 ```python
 class HTMLAssembler:
     def assemble(self):
-        # 1. Load book metadata
+        # 1. Load book metadata (title_vi, author_vi)
         metadata = BookMetadataManager.from_book_progress(progress)
         
         # 2. Generate HTML header with CSS
@@ -330,16 +278,18 @@ class HTMLAssembler:
         save(html)
 ```
 
-### Metadata Handling
+### Metadata Translation
 
-Book metadata (title, author) is automatically translated during the translation phase:
+Book metadata is automatically translated during the translation phase:
 
 ```python
-# In setup_translation()
+# Translates book title and author name to Vietnamese
 if not progress.title_vi:
     progress.title_vi = await llm.translate_title(progress.title, "book")
     progress.author_vi = await llm.translate_title(progress.author, "author")
 ```
+
+---
 
 ## Phase 4: Export
 
@@ -355,7 +305,6 @@ class CalibreExporter:
             f"output/book.{output_format}",
             "--title", metadata.title,
             "--authors", metadata.author,
-            # ... other options
         ]
         
         # 2. Execute conversion
@@ -364,6 +313,10 @@ class CalibreExporter:
         # 3. Return result path
         return output_path
 ```
+
+**Supported formats:** EPUB, AZW3 (Kindle), PDF, MOBI
+
+---
 
 ## Progress Tracking
 
@@ -391,37 +344,43 @@ PENDING ──▶ CRAWLED ──▶ TRANSLATED
 
 ### Resumable Operations
 
-Both crawling and translation support resuming:
+Both crawling and translation save progress **after each chapter**:
 
 ```python
-# Resume mode (default): skip completed
+# Resume mode (default): skip completed chapters
 if resume:
     chapters_to_process = [c for c in chapters if c.status == PENDING]
 
-# Force mode: process all
+# Force mode: re-process all chapters
 if force:
     chapters_to_process = all_chapters
+
+# Progress saved after each chapter
+progress.save(book_dir)  # Prevents data loss on interruption
 ```
+
+---
 
 ## Progress Display
 
-### Chunk-Level Progress Bar with Parallel Indicator
+### Parallel Translation Indicator
 
 ```
-Ch.1: 第一章 惊蛰... translating [1,2,3] [0/6] ━━━━━━━━━━━━━━━━   0%
+Ch.1: 第一章 惊蛰... translating [1,2,3] [0/6] ━━━━━━━━━━━   0%
                               ↑
-                     Shows which chunks are currently being translated in parallel!
+                     Active parallel chunks
 
-Ch.1: 第一章 惊蛰... [3/6] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  50%
+Ch.1: 第一章 惊蛰... [done] [6/6] ━━━━━━━━━━━━━━━━━━━━━━━━ 100%
 ```
 
 The progress bar:
 1. Pre-calculates total chunks across all chapters
 2. Shows active parallel chunks (e.g., `translating [1,2,3]`)
 3. Advances by 1 after each chunk completes
-3. Shows current chapter, chunk index, and overall percentage
 
-## Configuration System
+---
+
+## Configuration
 
 ### Pydantic Settings
 
@@ -437,8 +396,8 @@ class AppConfig(BaseSettings):
 
 | Prefix | Purpose |
 |--------|---------|
-| `OPENAI_` | LLM API configuration |
-| `CRAWLER_` | HTTP client settings |
+| `OPENAI_` | LLM API configuration (API_KEY, BASE_URL, MODEL) |
+| `CRAWLER_` | HTTP client settings (delay, retries, timeout) |
 | `TRANSLATION_` | Translation & glossary settings |
 | `CALIBRE_` | Ebook converter path |
 
@@ -447,10 +406,13 @@ class AppConfig(BaseSettings):
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `TRANSLATION_CHUNK_SIZE` | 2000 | Characters per translation chunk |
-| `TRANSLATION_CHUNK_OVERLAP` | 300 | Context chars from previous chunk (for parallel mode) |
+| `TRANSLATION_CHUNK_OVERLAP` | 300 | Context chars from previous chunk |
 | `TRANSLATION_CONCURRENT_REQUESTS` | 3 | Max parallel API calls |
 | `TRANSLATION_PROGRESSIVE_GLOSSARY` | true | Extract new terms during translation |
 | `TRANSLATION_GLOSSARY_SAMPLE_CHAPTERS` | 5 | Chapters to sample for initial glossary |
+| `TRANSLATION_GLOSSARY_SAMPLE_SIZE` | 3000 | Characters per sample chapter |
+
+---
 
 ## File Structure
 
@@ -471,6 +433,8 @@ books/
         └── book.azw3       # Exported ebook
 ```
 
+---
+
 ## Error Handling
 
 ### Retry Logic
@@ -483,11 +447,12 @@ for attempt in range(max_retries):
         response = await client.get(url)
         return response
     except Exception:
-        await sleep(delay * (2 ** attempt))
+        await sleep(delay * (2 ** attempt))  # 1s, 2s, 4s...
 ```
 
 ### Graceful Degradation
 
-- Content extraction: falls back to body if selector fails
-- Encoding detection: uses chardet if specified encoding fails
-- Glossary parsing: returns empty list if LLM response invalid
+- **Content extraction:** Falls back to `<body>` if selector fails
+- **Encoding detection:** Uses chardet if specified encoding fails
+- **Glossary parsing:** Returns empty list if LLM response invalid
+- **Progressive glossary:** Silently fails (non-blocking enhancement)
