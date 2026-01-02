@@ -171,6 +171,8 @@ class CalibreExporter:
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",  # Handle any encoding issues gracefully
                 timeout=300,  # 5 minute timeout
             )
 

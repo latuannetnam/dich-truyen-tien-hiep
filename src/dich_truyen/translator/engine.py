@@ -189,17 +189,21 @@ class TranslationEngine:
     async def translate_book(
         self,
         book_dir: Path,
+        chapters_spec: Optional[str] = None,
         resume: bool = True,
     ) -> TranslationResult:
         """Translate all chapters in a book.
 
         Args:
             book_dir: Book directory path
+            chapters_spec: Optional chapter range (e.g., "1-100" or "1,5,10-20")
             resume: Whether to skip already translated chapters
 
         Returns:
             Translation result with statistics
         """
+        from dich_truyen.utils.progress import parse_chapter_range
+        
         book_dir = Path(book_dir)
         raw_dir = book_dir / "raw"
         translated_dir = book_dir / "translated"
@@ -212,12 +216,26 @@ class TranslationEngine:
         if not progress:
             raise ValueError(f"Book not initialized: {book_dir}")
 
-        # Get chapters to translate
+        # Apply chapter range filter if specified
+        all_chapters = progress.chapters
+        max_chapter = len(all_chapters)
+        
+        if chapters_spec:
+            indices = parse_chapter_range(chapters_spec, max_chapter)
+            filtered_chapters = [c for c in all_chapters if c.index in indices]
+        else:
+            filtered_chapters = all_chapters
+
+        # Get chapters to translate based on status
         if resume:
-            chapters_to_translate = progress.get_pending_chapters("translate")
+            chapters_to_translate = [
+                c for c in filtered_chapters 
+                if c.status == ChapterStatus.CRAWLED
+            ]
         else:
             chapters_to_translate = [
-                c for c in progress.chapters if c.status in (ChapterStatus.CRAWLED, ChapterStatus.TRANSLATED)
+                c for c in filtered_chapters 
+                if c.status in (ChapterStatus.CRAWLED, ChapterStatus.TRANSLATED)
             ]
 
         if not chapters_to_translate:
@@ -260,10 +278,17 @@ class TranslationEngine:
                         raise FileNotFoundError(f"Source file not found for chapter {chapter.index}")
 
                     source_path = source_files[0]
-                    output_path = translated_dir / source_path.name
+                    # Use simple naming: chapter_number.txt
+                    output_path = translated_dir / f"{chapter.index}.txt"
 
-                    # Translate
+                    # Translate chapter content
                     await self.translate_chapter(source_path, output_path)
+
+                    # Translate chapter title if not already done
+                    if chapter.title_cn and not chapter.title_vi:
+                        chapter.title_vi = await self.llm.translate_title(
+                            chapter.title_cn, "chapter"
+                        )
 
                     # Update status
                     progress.update_chapter_status(chapter.index, ChapterStatus.TRANSLATED)
@@ -347,7 +372,66 @@ async def setup_translation(
             glossary.save(book_dir)
             console.print(f"[green]Generated {len(glossary)} glossary entries[/green]")
 
+    # Translate book metadata if not already done
+    progress = BookProgress.load(book_dir)
+    if progress and not progress.title_vi:
+        console.print("[blue]Translating book metadata...[/blue]")
+        llm = LLMClient()
+        
+        # Translate book title
+        if progress.title:
+            progress.title_vi = await llm.translate_title(progress.title, "book")
+            console.print(f"  Title: {progress.title} → {progress.title_vi}")
+        
+        # Translate author name
+        if progress.author:
+            progress.author_vi = await llm.translate_title(progress.author, "author")
+            console.print(f"  Author: {progress.author} → {progress.author_vi}")
+        
+        progress.save(book_dir)
+
     return TranslationEngine(
         style=style,
         glossary=glossary,
     )
+
+
+async def translate_chapter_titles(book_dir: Path, chapters_spec: Optional[str] = None) -> None:
+    """Translate chapter titles for a book.
+
+    Args:
+        book_dir: Book directory path
+        chapters_spec: Optional chapter range
+    """
+    from dich_truyen.utils.progress import parse_chapter_range
+    
+    book_dir = Path(book_dir)
+    progress = BookProgress.load(book_dir)
+    if not progress:
+        raise ValueError(f"Book not initialized: {book_dir}")
+
+    # Apply chapter range filter if specified
+    all_chapters = progress.chapters
+    max_chapter = len(all_chapters)
+    
+    if chapters_spec:
+        indices = parse_chapter_range(chapters_spec, max_chapter)
+        chapters_to_translate = [c for c in all_chapters if c.index in indices and not c.title_vi]
+    else:
+        chapters_to_translate = [c for c in all_chapters if not c.title_vi]
+
+    if not chapters_to_translate:
+        console.print("[green]All chapter titles already translated![/green]")
+        return
+
+    console.print(f"[blue]Translating {len(chapters_to_translate)} chapter titles...[/blue]")
+    
+    llm = LLMClient()
+    
+    for chapter in chapters_to_translate:
+        if chapter.title_cn:
+            chapter.title_vi = await llm.translate_title(chapter.title_cn, "chapter")
+            console.print(f"[dim]  Ch.{chapter.index}: {chapter.title_cn} → {chapter.title_vi}[/dim]")
+    
+    progress.save(book_dir)
+    console.print("[green]Chapter titles translated![/green]")

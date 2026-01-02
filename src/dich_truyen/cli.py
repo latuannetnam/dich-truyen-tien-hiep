@@ -59,6 +59,7 @@ def cli(ctx, verbose: bool, quiet: bool, env_file: Optional[str]) -> None:
 @click.option("--chapters", help="Chapter range (e.g., 1-100 or 1,5,10-20)")
 @click.option("--encoding", help="Force encoding (auto-detect if not set)")
 @click.option("--resume/--no-resume", default=True, help="Resume interrupted download")
+@click.option("--force", is_flag=True, help="Force re-download even if already downloaded")
 @click.pass_context
 def crawl(
     ctx,
@@ -67,6 +68,7 @@ def crawl(
     chapters: Optional[str],
     encoding: Optional[str],
     resume: bool,
+    force: bool,
 ) -> None:
     """Phase 1: Crawl chapters from website.
 
@@ -93,8 +95,8 @@ def crawl(
         # Initialize book (discover patterns, extract chapter list)
         await downloader.initialize_book(url, encoding)
 
-        # Download chapters
-        result = await downloader.download_chapters(chapters, resume)
+        # Download chapters (force disables resume)
+        result = await downloader.download_chapters(chapters, resume=resume and not force)
 
         if result.failed > 0:
             console.print(f"[yellow]Warning: {result.failed} chapters failed[/yellow]")
@@ -112,19 +114,23 @@ def crawl(
 @cli.command()
 @click.option("--book-dir", required=True, type=click.Path(exists=True), help="Book directory")
 @click.option("--style", default="tien_hiep", help="Translation style template")
+@click.option("--chapters", help="Chapter range (e.g., 1-100 or 1,5,10-20)")
 @click.option("--glossary", type=click.Path(exists=True), help="Import glossary CSV")
 @click.option("--auto-glossary/--no-auto-glossary", default=True, help="Auto-generate glossary")
 @click.option("--chunk-size", type=int, help="Characters per translation chunk")
 @click.option("--resume/--no-resume", default=True, help="Resume interrupted translation")
+@click.option("--force", is_flag=True, help="Force re-translate even if already translated")
 @click.pass_context
 def translate(
     ctx,
     book_dir: str,
     style: str,
+    chapters: Optional[str],
     glossary: Optional[str],
     auto_glossary: bool,
     chunk_size: Optional[int],
     resume: bool,
+    force: bool,
 ) -> None:
     """Phase 2: Translate chapters using LLM.
 
@@ -145,10 +151,11 @@ def translate(
         if chunk_size:
             engine.config.chunk_size = chunk_size
 
-        # Run translation
+        # Run translation (force disables resume)
         result = await engine.translate_book(
             book_dir=Path(book_dir),
-            resume=resume,
+            chapters_spec=chapters,
+            resume=resume and not force,
         )
 
         if result.failed > 0:
@@ -264,6 +271,7 @@ def export(
 )
 @click.option("--chapters", help="Chapter range (e.g., 1-100)")
 @click.option("--book-dir", type=click.Path(), help="Book directory")
+@click.option("--force", is_flag=True, help="Force re-process all steps")
 @click.pass_context
 def pipeline(
     ctx,
@@ -272,13 +280,80 @@ def pipeline(
     output_format: str,
     chapters: Optional[str],
     book_dir: Optional[str],
+    force: bool,
 ) -> None:
     """Run full pipeline: crawl → translate → format → export.
 
     Complete end-to-end processing of a Chinese novel.
     """
-    console.print("[yellow]Full pipeline not yet implemented[/yellow]")
-    console.print("Use individual commands: crawl, translate, format, export")
+    from dich_truyen.config import get_config
+    from dich_truyen.crawler.downloader import ChapterDownloader, create_book_directory
+    from dich_truyen.exporter.calibre import export_book
+    from dich_truyen.formatter.assembler import HTMLAssembler
+    from dich_truyen.translator.engine import setup_translation
+
+    async def run():
+        # Phase 1: Crawl
+        console.print("\n[bold blue]═══ Phase 1: Crawling ═══[/bold blue]")
+        
+        if book_dir:
+            target_dir = Path(book_dir)
+        else:
+            target_dir = await create_book_directory(url, get_config().books_dir)
+
+        console.print(f"Book directory: {target_dir}")
+
+        downloader = ChapterDownloader(target_dir)
+        await downloader.initialize_book(url)
+        crawl_result = await downloader.download_chapters(chapters, resume=not force)
+
+        if crawl_result.failed > 0:
+            console.print(f"[yellow]Warning: {crawl_result.failed} chapters failed to download[/yellow]")
+
+        # Phase 2: Translate
+        console.print("\n[bold blue]═══ Phase 2: Translating ═══[/bold blue]")
+        
+        engine = await setup_translation(
+            book_dir=target_dir,
+            style_name=style,
+            auto_glossary=True,
+        )
+
+        translate_result = await engine.translate_book(
+            book_dir=target_dir,
+            chapters_spec=chapters,
+            resume=not force,
+        )
+
+        if translate_result.failed > 0:
+            console.print(f"[yellow]Warning: {translate_result.failed} chapters failed to translate[/yellow]")
+
+        # Phase 3: Format
+        console.print("\n[bold blue]═══ Phase 3: Formatting ═══[/bold blue]")
+        
+        assembler = HTMLAssembler(target_dir)
+        html_path = assembler.assemble()
+
+        # Phase 4: Export
+        console.print("\n[bold blue]═══ Phase 4: Exporting ═══[/bold blue]")
+        
+        export_result = export_book(
+            book_dir=target_dir,
+            output_format=output_format,
+        )
+
+        if not export_result.success:
+            console.print(f"[red]Export failed: {export_result.error_message}[/red]")
+            raise SystemExit(1)
+
+        # Summary
+        console.print("\n[bold green]═══ Pipeline Complete! ═══[/bold green]")
+        console.print(f"  Book: {target_dir}")
+        console.print(f"  Chapters: {crawl_result.downloaded}")
+        console.print(f"  Translated: {translate_result.translated}")
+        console.print(f"  Output: {export_result.output_path}")
+
+    asyncio.run(run())
 
 
 # =============================================================================

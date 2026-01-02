@@ -136,6 +136,44 @@ class LLMClient:
 
         return "\n".join(parts)
 
+    async def translate_title(self, title: str, title_type: str = "book") -> str:
+        """Translate a title from Chinese to Vietnamese.
+
+        Args:
+            title: Chinese title to translate
+            title_type: Type of title ("book", "chapter", "author")
+
+        Returns:
+            Translated Vietnamese title
+        """
+        if title_type == "author":
+            system_prompt = """Bạn là dịch giả chuyên nghiệp. Hãy phiên âm tên tác giả Trung Quốc sang tiếng Việt.
+Quy tắc:
+- Phiên âm Hán-Việt chuẩn xác
+- VD: 烽火戏诸侯 -> Phong Hỏa Hí Chư Hầu
+- CHỈ trả về tên đã phiên âm, không giải thích"""
+        elif title_type == "chapter":
+            system_prompt = """Bạn là dịch giả chuyên nghiệp. Hãy dịch tiêu đề chương tiểu thuyết Trung Quốc sang tiếng Việt.
+Quy tắc:
+- Dịch ý nghĩa, giữ văn phong tiên hiệp/kiếm hiệp
+- VD: 第一章 惊蛰 -> Chương 1: Kinh Trập
+- CHỈ trả về tiêu đề đã dịch, không giải thích"""
+        else:  # book
+            system_prompt = """Bạn là dịch giả chuyên nghiệp. Hãy dịch tên tiểu thuyết Trung Quốc sang tiếng Việt.
+Quy tắc:
+- Phiên âm Hán-Việt hoặc dịch nghĩa tùy ngữ cảnh
+- VD: 剑来 -> Kiếm Lai
+- CHỈ trả về tên đã dịch, không giải thích"""
+
+        user_prompt = f"Dịch: {title}"
+
+        return await self.complete(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.3,
+            max_tokens=100,
+        )
+
 
 async def test_llm_connection(config: Optional[LLMConfig] = None) -> bool:
     """Test if the LLM connection is working.

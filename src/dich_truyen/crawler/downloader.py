@@ -127,6 +127,12 @@ class ChapterDownloader:
             discovered.patterns.title_selector = content_patterns.title_selector
             discovered.patterns.content_selector = content_patterns.content_selector
             discovered.patterns.elements_to_remove = content_patterns.elements_to_remove
+        
+        # Log final patterns being used
+        console.print("[dim]Final patterns for content extraction:[/dim]")
+        console.print(f"  [dim]• Title: {discovered.patterns.title_selector}[/dim]")
+        console.print(f"  [dim]• Content: {discovered.patterns.content_selector}[/dim]")
+        console.print(f"  [dim]• Remove: {discovered.patterns.elements_to_remove}[/dim]")
 
         # Update progress
         progress.title = discovered.title
@@ -200,6 +206,12 @@ class ChapterDownloader:
         console.print(f"[blue]Downloading {len(chapters_to_download)} chapters...[/blue]")
         if skipped > 0:
             console.print(f"  Skipping {skipped} already downloaded")
+        
+        # Log patterns being used
+        console.print("[dim]Using extraction patterns:[/dim]")
+        console.print(f"  [dim]• Title selector: {progress.patterns.title_selector}[/dim]")
+        console.print(f"  [dim]• Content selector: {progress.patterns.content_selector}[/dim]")
+        console.print(f"  [dim]• Elements to remove: {progress.patterns.elements_to_remove}[/dim]")
 
         # Create extraction discovery
         discovery = PatternDiscovery()

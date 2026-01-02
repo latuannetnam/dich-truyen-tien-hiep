@@ -35,7 +35,8 @@ class BookMetadataManager(BaseModel):
         return cls(
             title=progress.title_vi or progress.title,
             title_original=progress.title,
-            author=progress.author,
+            # Use translated author name if available
+            author=progress.author_vi or progress.author,
             translator=progress.metadata.translator,
             description=progress.metadata.description,
             cover_path=progress.metadata.cover_path,

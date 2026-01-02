@@ -146,9 +146,15 @@ class HTMLAssembler:
         chapters_with_files = []
 
         for chapter in self.progress.chapters:
-            # Find the translated file
-            pattern = f"{chapter.index:04d}_*.txt"
-            files = list(self.translated_dir.glob(pattern))
+            # Try new naming pattern first: chapter_number.txt
+            new_pattern_file = self.translated_dir / f"{chapter.index}.txt"
+            if new_pattern_file.exists():
+                chapters_with_files.append((chapter, new_pattern_file))
+                continue
+            
+            # Fall back to old pattern: 0001_*.txt
+            old_pattern = f"{chapter.index:04d}_*.txt"
+            files = list(self.translated_dir.glob(old_pattern))
             if files:
                 chapters_with_files.append((chapter, files[0]))
 
