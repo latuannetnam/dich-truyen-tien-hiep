@@ -260,56 +260,89 @@ async def generate_glossary_from_samples(
 ) -> Glossary:
     """Use LLM to generate glossary from sample texts.
 
+    Processes samples in batches to avoid token limits.
+
     Args:
         sample_texts: List of sample text excerpts
         existing_glossary: Existing glossary to merge with
-        min_entries: Minimum number of entries to request
-        max_entries: Maximum entries to keep
+        min_entries: Minimum number of entries to request per batch
+        max_entries: Maximum entries to keep in final glossary
 
     Returns:
         Generated glossary
     """
     from dich_truyen.translator.llm import LLMClient
-
-    llm = LLMClient()
-
-    # Combine sample texts
-    combined = "\n\n---\n\n".join(sample_texts)
-
-    prompt = GLOSSARY_GENERATION_PROMPT.format(
-        sample_texts=combined,
-        min_entries=min_entries,
-    )
-
-    response = await llm.complete(
-        system_prompt="Bạn là chuyên gia phân tích tiểu thuyết Trung Quốc. Trả về JSON chính xác với nhiều thuật ngữ nhất có thể.",
-        user_prompt=prompt,
-        temperature=0.3,
-    )
-
-    # Parse JSON from response
     import re
 
-    # Try to extract JSON array
-    json_match = re.search(r"\[.*\]", response, re.DOTALL)
-    if json_match:
+    llm = LLMClient()
+    
+    # Process samples in batches of 5 to avoid token limits
+    BATCH_SIZE = 5
+    all_entries: list[GlossaryEntry] = []
+    
+    # Calculate entries per batch
+    num_batches = (len(sample_texts) + BATCH_SIZE - 1) // BATCH_SIZE
+    entries_per_batch = max(10, min_entries // max(1, num_batches))
+    
+    console.print(f"[dim]Processing {len(sample_texts)} samples in {num_batches} batches...[/dim]")
+    
+    for batch_idx in range(0, len(sample_texts), BATCH_SIZE):
+        batch = sample_texts[batch_idx:batch_idx + BATCH_SIZE]
+        batch_num = batch_idx // BATCH_SIZE + 1
+        
+        console.print(f"[dim]  Batch {batch_num}/{num_batches}: analyzing {len(batch)} samples...[/dim]")
+        
+        # Combine batch texts
+        combined = "\n\n---\n\n".join(batch)
+
+        prompt = GLOSSARY_GENERATION_PROMPT.format(
+            sample_texts=combined,
+            min_entries=entries_per_batch,
+        )
+
         try:
-            entries_data = json.loads(json_match.group())
-            entries = [GlossaryEntry.model_validate(e) for e in entries_data]
-        except (json.JSONDecodeError, Exception) as e:
-            console.print(f"[yellow]Failed to parse glossary response: {e}[/yellow]")
-            entries = []
-    else:
-        entries = []
+            response = await llm.complete(
+                system_prompt="Bạn là chuyên gia phân tích tiểu thuyết Trung Quốc. Trả về JSON chính xác với nhiều thuật ngữ nhất có thể.",
+                user_prompt=prompt,
+                temperature=0.3,
+            )
+
+            # Parse JSON from response
+            json_match = re.search(r"\[.*\]", response, re.DOTALL)
+            if json_match:
+                try:
+                    entries_data = json.loads(json_match.group())
+                    batch_entries = [GlossaryEntry.model_validate(e) for e in entries_data]
+                    all_entries.extend(batch_entries)
+                    console.print(f"[dim]    Found {len(batch_entries)} terms[/dim]")
+                except (json.JSONDecodeError, Exception) as e:
+                    console.print(f"[yellow]    Failed to parse batch {batch_num}: {e}[/yellow]")
+            else:
+                console.print(f"[yellow]    No JSON found in batch {batch_num} response[/yellow]")
+        except Exception as e:
+            console.print(f"[red]    Batch {batch_num} failed: {e}[/red]")
+            continue
+
+    # Deduplicate entries (keep first occurrence)
+    seen = set()
+    unique_entries = []
+    for entry in all_entries:
+        if entry.chinese not in seen:
+            seen.add(entry.chinese)
+            unique_entries.append(entry)
+    
+    console.print(f"[green]Generated {len(unique_entries)} unique glossary entries[/green]")
 
     # Limit to max_entries
-    if len(entries) > max_entries:
-        entries = entries[:max_entries]
+    if len(unique_entries) > max_entries:
+        unique_entries = unique_entries[:max_entries]
+        console.print(f"[dim]  Limited to {max_entries} entries[/dim]")
 
     # Create or merge with existing
     if existing_glossary:
-        for entry in entries:
+        for entry in unique_entries:
             existing_glossary.add(entry)
         return existing_glossary
     else:
-        return Glossary(entries)
+        return Glossary(unique_entries)
+
