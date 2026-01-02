@@ -109,21 +109,48 @@ if len(content) < 100:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Chunk-Based Translation
+### Chunk-Based Translation (Parallel)
 
-Large chapters are split into chunks for efficient API usage:
+Large chapters are split into chunks and translated **in parallel** for speed:
+
+```
+Chapter Text:  [====Chunk1====][====Chunk2====][====Chunk3====]
+                      ↓              ↓              ↓
+Context:           (none)    ←300 chars→    ←300 chars→
+                      ↓              ↓              ↓
+               ┌─────────────────────────────────────────┐
+               │   Parallel Translation (semaphore)      │
+               │   TRANSLATION_CONCURRENT_REQUESTS=3     │
+               └─────────────────────────────────────────┘
+                      ↓              ↓              ↓
+Output:        [==Trans1==] + [==Trans2==] + [==Trans3==]
+```
 
 ```python
-# 1. Split text into chunks (~2000 chars each)
-chunks = chunk_text(content, chunk_size=2000)
+# 1. Create chunks with context from previous chunk (Chinese source)
+chunks_with_context = create_chunks_with_context(content)
+# Each chunk has: {"main_text": "...", "context_text": "last 300 chars of prev"}
 
-# 2. Translate with context continuity
-context = None
-for chunk in chunks:
-    translated = await translate_chunk(chunk, context)
-    # Keep last 500 chars as context for next chunk
-    context = translated[-500:]
+# 2. Translate all chunks in parallel (limited by semaphore)
+semaphore = asyncio.Semaphore(config.concurrent_requests)  # default: 3
+
+async def translate_with_limit(chunk_data, index):
+    async with semaphore:
+        return await translate_chunk(chunk_data["main_text"], 
+                                      context=chunk_data["context_text"])
+
+results = await asyncio.gather(*[translate_with_limit(c, i) for i, c in enumerate(chunks)])
+
+# 3. Sort by index and combine
+results.sort(key=lambda x: x[0])
+final_text = "\n\n".join(results)
 ```
+
+**Key design decisions:**
+- Context uses **source Chinese** text (not translated output) to enable parallel processing
+- Each chunk receives ~300 chars from previous chunk for narrative continuity
+- Semaphore limits concurrent API calls to respect rate limits
+- Results sorted by index to maintain correct order
 
 ### Style Template System
 
@@ -322,15 +349,20 @@ if force:
 
 ## Progress Display
 
-### Chunk-Level Progress Bar
+### Chunk-Level Progress Bar with Parallel Indicator
 
 ```
-Ch.1: 第一章 惊蛰... [2/4 chunks] ━━━━━━━━━━━━━━━━━━━━━  50%
+Ch.1: 第一章 惊蛰... translating [1,2,3] [0/6] ━━━━━━━━━━━━━━━━   0%
+                              ↑
+                     Shows which chunks are currently being translated in parallel!
+
+Ch.1: 第一章 惊蛰... [3/6] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  50%
 ```
 
 The progress bar:
 1. Pre-calculates total chunks across all chapters
-2. Advances by 1 after each chunk completes
+2. Shows active parallel chunks (e.g., `translating [1,2,3]`)
+3. Advances by 1 after each chunk completes
 3. Shows current chapter, chunk index, and overall percentage
 
 ## Configuration System
@@ -353,6 +385,15 @@ class AppConfig(BaseSettings):
 | `CRAWLER_` | HTTP client settings |
 | `TRANSLATION_` | Translation & glossary settings |
 | `CALIBRE_` | Ebook converter path |
+
+#### Key Translation Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `TRANSLATION_CHUNK_SIZE` | 2000 | Characters per translation chunk |
+| `TRANSLATION_CHUNK_OVERLAP` | 300 | Context chars from previous chunk (for parallel mode) |
+| `TRANSLATION_CONCURRENT_REQUESTS` | 3 | Max parallel API calls |
+| `TRANSLATION_GLOSSARY_SAMPLE_CHAPTERS` | 5 | Chapters to sample for glossary generation |
 
 ## File Structure
 

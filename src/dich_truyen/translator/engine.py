@@ -1,5 +1,6 @@
 """Translation engine with chunking and context management."""
 
+import asyncio
 import re
 from datetime import datetime
 from pathlib import Path
@@ -142,13 +143,80 @@ class TranslationEngine:
             context=context,
         )
 
+    async def translate_chunk_with_context_marker(
+        self,
+        main_text: str,
+        context_text: Optional[str] = None,
+    ) -> str:
+        """Translate text with a context portion that should not be included in output.
+
+        Args:
+            main_text: The main text to translate (this will be in the output)
+            context_text: Context from previous portion (not included in output)
+
+        Returns:
+            Translated main text only
+        """
+        if not self.style:
+            raise ValueError("Style template not set")
+
+        style_prompt = self.style.to_prompt_format()
+        glossary_prompt = self.glossary.to_prompt_format() if self.glossary else ""
+
+        if context_text:
+            # Use context as reference but only translate main_text
+            return await self.llm.translate(
+                text=main_text,
+                style_prompt=style_prompt,
+                glossary_prompt=glossary_prompt,
+                context=context_text,  # Chinese context for reference
+            )
+        else:
+            return await self.llm.translate(
+                text=main_text,
+                style_prompt=style_prompt,
+                glossary_prompt=glossary_prompt,
+            )
+
+    def create_chunks_with_context(self, text: str) -> list[dict]:
+        """Split text into chunks with context from previous chunk.
+
+        Each chunk includes context from the previous portion for translation quality,
+        but only the main portion should be in the final output.
+
+        Returns:
+            List of dicts with 'main_text' and 'context_text' keys
+        """
+        chunk_size = self.config.chunk_size
+        overlap = self.config.chunk_overlap
+        
+        # First split by paragraphs using existing method
+        raw_chunks = self.chunk_text(text)
+        
+        if len(raw_chunks) <= 1:
+            # Single chunk, no context needed
+            return [{"main_text": raw_chunks[0] if raw_chunks else "", "context_text": None}]
+        
+        result = []
+        for i, chunk in enumerate(raw_chunks):
+            if i == 0:
+                # First chunk has no context
+                result.append({"main_text": chunk, "context_text": None})
+            else:
+                # Use end of previous chunk as context (original Chinese)
+                prev_chunk = raw_chunks[i - 1]
+                context = prev_chunk[-overlap:] if len(prev_chunk) > overlap else prev_chunk
+                result.append({"main_text": chunk, "context_text": context})
+        
+        return result
+
     async def translate_chapter(
         self,
         chapter_path: Path,
         output_path: Path,
         progress_callback=None,
     ) -> str:
-        """Translate an entire chapter file.
+        """Translate an entire chapter file using parallel chunk processing.
 
         Args:
             chapter_path: Path to source chapter file
@@ -162,24 +230,58 @@ class TranslationEngine:
         with open(chapter_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Split into chunks
-        chunks = self.chunk_text(content)
-        total_chunks = len(chunks)
+        # Create chunks with context
+        chunks_with_context = self.create_chunks_with_context(content)
+        total_chunks = len(chunks_with_context)
+        
+        if total_chunks == 0:
+            return ""
 
-        # Translate each chunk with context
-        translated_chunks = []
-        context = None
+        # Use semaphore to limit concurrent requests
+        semaphore = asyncio.Semaphore(self.config.concurrent_requests)
+        completed_count = 0
+        active_chunks = set()  # Track which chunks are currently being translated
+        completed_lock = asyncio.Lock()
 
-        for idx, chunk in enumerate(chunks, 1):
-            translated = await self.translate_chunk(chunk, context)
-            translated_chunks.append(translated)
-
-            # Use last ~500 chars as context for next chunk
-            context = translated[-500:] if len(translated) > 500 else translated
+        async def translate_with_limit(chunk_data: dict, index: int) -> tuple[int, str]:
+            """Translate a chunk with concurrency limit."""
+            nonlocal completed_count
             
-            # Report progress AFTER chunk is translated
-            if progress_callback:
-                progress_callback(idx, total_chunks)
+            async with semaphore:
+                # Mark chunk as active
+                async with completed_lock:
+                    active_chunks.add(index + 1)
+                    active_str = ",".join(str(c) for c in sorted(active_chunks))
+                    if progress_callback:
+                        progress_callback(completed_count, total_chunks, f"translating [{active_str}]")
+                
+                translated = await self.translate_chunk_with_context_marker(
+                    main_text=chunk_data["main_text"],
+                    context_text=chunk_data["context_text"],
+                )
+                
+                # Update progress after completion
+                async with completed_lock:
+                    active_chunks.discard(index + 1)
+                    completed_count += 1
+                    active_str = ",".join(str(c) for c in sorted(active_chunks)) if active_chunks else "done"
+                    if progress_callback:
+                        progress_callback(completed_count, total_chunks, f"[{active_str}]")
+                
+                return (index, translated)
+
+        # Create all translation tasks
+        tasks = [
+            translate_with_limit(chunk_data, idx)
+            for idx, chunk_data in enumerate(chunks_with_context)
+        ]
+
+        # Execute all tasks in parallel (limited by semaphore)
+        results = await asyncio.gather(*tasks)
+
+        # Sort by index to maintain order
+        results.sort(key=lambda x: x[0])
+        translated_chunks = [result[1] for result in results]
 
         # Combine translated chunks
         result = "\n\n".join(translated_chunks)
@@ -299,11 +401,12 @@ class TranslationEngine:
                     output_path = translated_dir / f"{chapter.index}.txt"
 
                     # Progress callback for chunk-level updates
-                    def update_chunk_progress(chunk_idx, total_chunks_in_chapter):
-                        desc = f"Ch.{chapter.index}: {chapter.title_cn[:15]}... [{chunk_idx}/{total_chunks_in_chapter} chunks]"
+                    def update_chunk_progress(chunk_idx, total_chunks_in_chapter, status=""):
+                        desc = f"Ch.{chapter.index}: {chapter.title_cn[:12]}... {status} [{chunk_idx}/{total_chunks_in_chapter}]"
                         pbar.update(task, description=desc)
-                        # Advance progress bar by 1 for each chunk
-                        pbar.advance(task, 1)
+                        # Advance progress bar by 1 for each completed chunk
+                        if "done" in status or status.startswith("[") and "translating" not in status:
+                            pbar.advance(task, 1)
 
                     # Translate chapter content with chunk progress
                     await self.translate_chapter(source_path, output_path, update_chunk_progress)
