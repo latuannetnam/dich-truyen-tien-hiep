@@ -327,9 +327,8 @@ class TranslationEngine:
                     )
                     console.print(f"[red]Error: {error_msg}[/red]")
 
-                # Save progress periodically
-                if result.translated % 5 == 0:
-                    progress.save(book_dir)
+                # Save progress after each chapter to prevent data loss
+                progress.save(book_dir)
 
         # Final save
         progress.save(book_dir)

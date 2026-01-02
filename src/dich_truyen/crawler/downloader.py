@@ -269,9 +269,8 @@ class ChapterDownloader:
                         )
                         console.print(f"[red]Error: {error_msg}[/red]")
 
-                    # Save progress periodically
-                    if result.downloaded % 10 == 0:
-                        progress.save(self.book_dir)
+                    # Save progress after each chapter to prevent data loss
+                    progress.save(self.book_dir)
 
                     # Rate limiting
                     await crawler.delay()
