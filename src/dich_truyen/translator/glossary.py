@@ -346,3 +346,86 @@ async def generate_glossary_from_samples(
     else:
         return Glossary(unique_entries)
 
+
+PROGRESSIVE_GLOSSARY_PROMPT = """Phân tích đoạn văn tiểu thuyết sau và tìm các thuật ngữ MỚI chưa có trong glossary hiện tại.
+
+## Glossary hiện tại (KHÔNG trùng lặp)
+{existing_terms}
+
+## Văn bản cần phân tích
+{text}
+
+## Yêu cầu
+Chỉ trích xuất các thuật ngữ QUAN TRỌNG và MỚI (không có trong glossary hiện tại):
+- Tên nhân vật mới xuất hiện (character)
+- Địa danh mới (location)
+- Môn phái, tổ chức mới (organization)
+- Cảnh giới, pháp bảo quan trọng (realm, item, technique)
+
+Chỉ trả về 3-5 thuật ngữ quan trọng nhất. Nếu không có thuật ngữ mới quan trọng, trả về [].
+
+## Định dạng trả về
+JSON array:
+[
+    {{"chinese": "...", "vietnamese": "...", "category": "...", "notes": "..."}}
+]"""
+
+
+async def extract_new_terms_from_chapter(
+    chinese_text: str,
+    existing_glossary: Glossary,
+    max_new_terms: int = 5,
+) -> list[GlossaryEntry]:
+    """Extract new important terms from a chapter that aren't in the glossary.
+
+    This is used for progressive glossary building during translation.
+
+    Args:
+        chinese_text: Chinese text to analyze (typically first 2000 chars of chapter)
+        existing_glossary: Current glossary to avoid duplicates
+        max_new_terms: Maximum new terms to extract per chapter
+
+    Returns:
+        List of new GlossaryEntry items (empty if none found)
+    """
+    from dich_truyen.translator.llm import LLMClient
+    import re
+
+    # Only analyze first portion to save tokens
+    text_sample = chinese_text[:2000] if len(chinese_text) > 2000 else chinese_text
+    
+    # Get existing terms for deduplication
+    existing_terms = ", ".join([e.chinese for e in existing_glossary.entries[:50]])
+    if not existing_terms:
+        existing_terms = "(chưa có)"
+
+    llm = LLMClient()
+
+    prompt = PROGRESSIVE_GLOSSARY_PROMPT.format(
+        existing_terms=existing_terms,
+        text=text_sample,
+    )
+
+    try:
+        response = await llm.complete(
+            system_prompt="Bạn là chuyên gia phân tích tiểu thuyết Trung Quốc. Trả về JSON chính xác, ngắn gọn.",
+            user_prompt=prompt,
+            temperature=0.2,
+            max_tokens=500,  # Keep response short
+        )
+
+        # Parse JSON from response
+        json_match = re.search(r"\[.*\]", response, re.DOTALL)
+        if json_match:
+            try:
+                entries_data = json.loads(json_match.group())
+                entries = [GlossaryEntry.model_validate(e) for e in entries_data[:max_new_terms]]
+                # Filter out any that already exist
+                new_entries = [e for e in entries if e.chinese not in existing_glossary]
+                return new_entries
+            except (json.JSONDecodeError, Exception):
+                pass
+    except Exception:
+        pass  # Silently fail - progressive glossary is optional enhancement
+
+    return []

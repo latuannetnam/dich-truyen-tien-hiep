@@ -152,6 +152,62 @@ final_text = "\n\n".join(results)
 - Semaphore limits concurrent API calls to respect rate limits
 - Results sorted by index to maintain correct order
 
+### Smart Dialogue Chunking
+
+Dialogue blocks are kept together to preserve conversation context:
+
+```
+Detection patterns:
+- Chinese quotes: "" 「」
+- Attribution: 说道, 道：, 问道, 笑道, 叫道
+
+Behavior:
+┌──────────────────────────────────────────┐
+│ "你是谁？"陈平安问道。                    │  ← Dialogue block
+│ "我是落落。"                              │    kept together
+│ 少女轻声答道。                            │
+└──────────────────────────────────────────┘
+```
+
+```python
+def _is_dialogue_paragraph(para: str) -> bool:
+    has_quotes = '"' in para or '「' in para
+    has_attribution = any(m in para for m in ['说道', '道：', '问道'])
+    return has_quotes or has_attribution
+
+def chunk_text(text):
+    # 1. Detect dialogue blocks (consecutive dialogue paragraphs)
+    # 2. Keep short narration (<100 chars) between dialogues in same block
+    # 3. Allow 20% chunk overflow to avoid splitting conversations
+```
+
+### Progressive Glossary Building
+
+New terms are extracted during translation to build glossary incrementally:
+
+```
+Ch.1 translated...
+  +2 new glossary terms (刘羡阳 → Lưu Tiện Dương, 骊珠洞天 → Ly Châu Động Thiên)
+Ch.2 translated...
+  +1 new glossary terms (宁姚 → Ninh Diêu)
+```
+
+```python
+# After each chapter translation:
+if config.progressive_glossary:
+    new_terms = await extract_new_terms_from_chapter(
+        chinese_text, existing_glossary, max_new_terms=3
+    )
+    glossary.add(new_terms)
+    glossary.save(book_dir)  # Auto-save after each chapter
+```
+
+**Key design decisions:**
+- Only analyzes first 2000 chars per chapter (token efficiency)
+- Compares against existing glossary to avoid duplicates
+- Extracts 3-5 most important new terms per chapter
+- Silently fails if extraction fails (non-blocking enhancement)
+
 ### Style Template System
 
 Style templates define translation behavior:
@@ -393,7 +449,8 @@ class AppConfig(BaseSettings):
 | `TRANSLATION_CHUNK_SIZE` | 2000 | Characters per translation chunk |
 | `TRANSLATION_CHUNK_OVERLAP` | 300 | Context chars from previous chunk (for parallel mode) |
 | `TRANSLATION_CONCURRENT_REQUESTS` | 3 | Max parallel API calls |
-| `TRANSLATION_GLOSSARY_SAMPLE_CHAPTERS` | 5 | Chapters to sample for glossary generation |
+| `TRANSLATION_PROGRESSIVE_GLOSSARY` | true | Extract new terms during translation |
+| `TRANSLATION_GLOSSARY_SAMPLE_CHAPTERS` | 5 | Chapters to sample for initial glossary |
 
 ## File Structure
 

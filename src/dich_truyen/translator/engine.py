@@ -52,8 +52,42 @@ class TranslationEngine:
         self.glossary = glossary or Glossary()
         self.config = config or get_config().translation
 
+    def _is_dialogue_paragraph(self, para: str) -> bool:
+        """Check if paragraph contains dialogue that should stay together.
+        
+        Chinese dialogue typically uses "" or 「」 quotes.
+        """
+        # Check for dialogue markers
+        has_cn_quotes = '"' in para or '"' in para or '「' in para or '」' in para
+        # Also check for dialogue attribution patterns
+        has_attribution = any(marker in para for marker in ['说道', '道：', '说：', '问道', '笑道', '叫道'])
+        return has_cn_quotes or has_attribution
+
+    def _find_dialogue_block_end(self, paragraphs: list[str], start_idx: int) -> int:
+        """Find the end of a dialogue block (consecutive dialogue paragraphs).
+        
+        Returns the index of the last paragraph in the dialogue block.
+        """
+        end_idx = start_idx
+        for i in range(start_idx, len(paragraphs)):
+            if self._is_dialogue_paragraph(paragraphs[i]):
+                end_idx = i
+            else:
+                # Non-dialogue paragraph - check if it's short (could be narration between dialogue)
+                if len(paragraphs[i]) < 100 and i + 1 < len(paragraphs) and self._is_dialogue_paragraph(paragraphs[i + 1]):
+                    # Short narration between dialogue, include it
+                    continue
+                else:
+                    break
+        return end_idx
+
     def chunk_text(self, text: str) -> list[str]:
-        """Split text into chunks by character count, respecting paragraphs.
+        """Split text into chunks by character count, respecting paragraphs and dialogue blocks.
+
+        This method ensures:
+        1. Paragraphs are not split mid-way
+        2. Dialogue blocks (conversations) are kept together when possible
+        3. Chunks don't exceed chunk_size except for very long dialogue blocks
 
         Args:
             text: Text to split
@@ -67,11 +101,38 @@ class TranslationEngine:
         chunks = []
         current_chunk = []
         current_length = 0
+        i = 0
 
-        for para in paragraphs:
+        while i < len(paragraphs):
+            para = paragraphs[i]
             para_length = len(para)
 
-            # If single paragraph exceeds chunk size, split it
+            # Check if this starts a dialogue block
+            if self._is_dialogue_paragraph(para):
+                dialogue_end = self._find_dialogue_block_end(paragraphs, i)
+                dialogue_block = paragraphs[i:dialogue_end + 1]
+                dialogue_text = "\n\n".join(dialogue_block)
+                dialogue_length = len(dialogue_text)
+
+                # If dialogue block fits in current chunk, add it
+                if current_length + dialogue_length + 2 <= chunk_size:
+                    current_chunk.extend(dialogue_block)
+                    current_length += dialogue_length + 2
+                    i = dialogue_end + 1
+                    continue
+                
+                # If dialogue block fits in a new chunk, flush current and start new
+                if dialogue_length <= chunk_size * 1.2:  # Allow 20% overflow to keep dialogue together
+                    if current_chunk:
+                        chunks.append("\n\n".join(current_chunk))
+                    current_chunk = dialogue_block
+                    current_length = dialogue_length
+                    i = dialogue_end + 1
+                    continue
+                
+                # Dialogue block too large - must split it (fall through to normal processing)
+
+            # Normal paragraph processing
             if para_length > chunk_size:
                 # Flush current chunk
                 if current_chunk:
@@ -83,16 +144,16 @@ class TranslationEngine:
                 sentences = re.split(r"([。！？])", para)
                 sentence_buffer = ""
 
-                for i, part in enumerate(sentences):
+                for j, part in enumerate(sentences):
                     sentence_buffer += part
-                    if part in "。！？" or i == len(sentences) - 1:
+                    if part in "。！？" or j == len(sentences) - 1:
                         if len(sentence_buffer) > chunk_size:
-                            # Force split mid-sentence
                             while sentence_buffer:
                                 chunks.append(sentence_buffer[:chunk_size])
                                 sentence_buffer = sentence_buffer[chunk_size:]
                         elif current_length + len(sentence_buffer) > chunk_size:
-                            chunks.append("\n\n".join(current_chunk))
+                            if current_chunk:
+                                chunks.append("\n\n".join(current_chunk))
                             current_chunk = [sentence_buffer]
                             current_length = len(sentence_buffer)
                         else:
@@ -108,7 +169,9 @@ class TranslationEngine:
                 current_length = para_length
             else:
                 current_chunk.append(para)
-                current_length += para_length + 2  # +2 for \n\n
+                current_length += para_length + 2
+
+            i += 1
 
         # Don't forget the last chunk
         if current_chunk:
@@ -417,6 +480,19 @@ class TranslationEngine:
                             chapter.title_cn, "chapter"
                         )
 
+                    # Progressive glossary: extract new terms from this chapter
+                    if self.config.progressive_glossary and self.glossary:
+                        from dich_truyen.translator.glossary import extract_new_terms_from_chapter
+                        with open(source_path, "r", encoding="utf-8") as f:
+                            chapter_content = f.read()
+                        new_terms = await extract_new_terms_from_chapter(
+                            chapter_content, self.glossary, max_new_terms=3
+                        )
+                        if new_terms:
+                            for term in new_terms:
+                                self.glossary.add(term)
+                            console.print(f"[dim]  +{len(new_terms)} new glossary terms[/dim]")
+
                     # Update status
                     progress.update_chapter_status(chapter.index, ChapterStatus.TRANSLATED)
                     result.translated += 1
@@ -432,6 +508,10 @@ class TranslationEngine:
 
                 # Save progress after each chapter to prevent data loss
                 progress.save(book_dir)
+                
+                # Save updated glossary if progressive mode enabled
+                if self.config.progressive_glossary and self.glossary:
+                    self.glossary.save(book_dir)
 
         # Final save
         progress.save(book_dir)
