@@ -210,17 +210,24 @@ uv run dich-truyen glossary import --book-dir ./books/my-book -i edited_glossary
 
 ### Style Templates
 
-```bash
-# List available styles
-uv run dich-truyen style list
+#### List Available Styles
 
-# Generate custom style
-uv run dich-truyen style generate \
-  --description "Văn phong nhẹ nhàng, hiện đại" \
-  -o styles/custom.yaml
+```bash
+uv run dich-truyen style list
 ```
 
-## Available Styles
+#### Generate Custom Style
+
+```bash
+# Create a new custom style using LLM
+uv run dich-truyen style generate \
+  --description "Văn phong ngôn tình, lãng mạn hiện đại" \
+  -o styles/ngon_tinh.yaml
+```
+
+## Translation Styles
+
+### Built-in Styles (Default: `tien_hiep`)
 
 | Style | Description | Use For |
 |-------|-------------|---------|
@@ -228,6 +235,48 @@ uv run dich-truyen style generate \
 | `kiem_hiep` | Kiếm hiệp, võ lâm, giang hồ | 武侠 novels |
 | `huyen_huyen` | Huyền huyễn, kỳ ảo, ma pháp | 玄幻 novels |
 | `do_thi` | Đô thị, hiện đại, nhẹ nhàng | 都市 novels |
+
+### Custom Styles
+
+You can create custom styles or **override built-in styles** by placing YAML files in the `styles/` directory.
+
+**Priority order:**
+1. Custom styles in `styles/` (checked first)
+2. Built-in styles (fallback)
+
+**Examples:**
+
+```bash
+# Use a built-in style
+uv run dich-truyen translate --book-dir books/my-book --style tien_hiep
+
+# Use a custom style
+uv run dich-truyen translate --book-dir books/my-book --style ngon_tinh
+
+# Override a built-in style: create styles/tien_hiep.yaml
+# Your custom styles/tien_hiep.yaml will be used instead of the built-in one
+uv run dich-truyen style generate \
+  --description "Văn phong tiên hiệp cải tiến" \
+  -o styles/tien_hiep.yaml
+```
+
+**Custom style structure (YAML):**
+
+```yaml
+name: ngon_tinh
+description: Văn phong ngôn tình, lãng mạn hiện đại
+guidelines:
+  - Ngôn ngữ mềm mại, lãng mạn
+  - Đại từ: 'anh', 'em', 'cô ấy'
+vocabulary:
+  我: em
+  你: anh
+  爱: yêu
+tone: casual
+examples:
+  - chinese: "我爱你"
+    vietnamese: "Em yêu anh"
+```
 
 ## Book Directory Structure
 

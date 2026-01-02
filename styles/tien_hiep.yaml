@@ -1,0 +1,44 @@
+name: tien_hiep
+description: Phong cách dịch thuật tiểu thuyết tiên hiệp, tu chân, cổ trang, chú trọng
+  không khí thần bí, trang trọng, sử dụng ngôn ngữ cổ điển, hoa mỹ, giữ nguyên các
+  thuật ngữ tu luyện và danh xưng cổ xưa.
+guidelines:
+- Giữ nguyên hoặc phiên âm các thuật ngữ tu luyện đặc trưng như 'Kim Đan', 'Nguyên
+  Anh', 'Luyện Khí', v.v.
+- Sử dụng ngôn từ cổ trang, trang trọng, hạn chế dùng từ hiện đại, đời thường.
+- Chú trọng diễn đạt khí chất thần bí, siêu thoát, tránh giản lược ý tứ gốc.
+- Giữ nguyên cách xưng hô trang trọng, tôn ti trật tự như 'tiểu bối', 'tiền bối',
+  'chưởng môn', 'đạo hữu'.
+- Tránh lược bỏ các mô tả cảnh vật kỳ ảo, khí thế hùng vĩ đặc trưng của thể loại.
+- Đảm bảo các câu văn có nhịp điệu, cân đối, có thể sử dụng các cấu trúc song song
+  hoặc đảo ngữ để tăng tính cổ điển.
+- Lưu ý chuyển nghĩa các danh từ riêng, địa danh, tên pháp bảo theo hướng phiên âm
+  hoặc dịch nghĩa phù hợp với ngữ cảnh cổ trang.
+vocabulary:
+  修炼: tu luyện
+  灵气: linh khí
+  法宝: pháp bảo
+  宗门: tông môn
+  长老: trưởng lão
+  仙根: tiên căn
+  丹药: đan dược
+  元婴: Nguyên Anh
+  金丹: Kim Đan
+  炼气: Luyện Khí
+  飞升: phi thăng
+  道友: đạo hữu
+  师尊: sư tôn
+  传承: truyền thừa
+  魔修: ma tu
+tone: archaic
+examples:
+- chinese: 他闭关修炼三年，终于突破到了金丹期。
+  vietnamese: Hắn bế quan tu luyện ba năm, rốt cuộc cũng đột phá đến cảnh giới Kim
+    Đan.
+- chinese: 宗门大比即将开始，各路天才齐聚一堂。
+  vietnamese: Tông môn đại tỷ sắp khai mạc, các lộ thiên tài tề tựu một nơi.
+- chinese: 这枚丹药蕴含着浓郁的灵气，可助你突破境界。
+  vietnamese: Viên đan dược này ẩn chứa linh khí nồng đậm, có thể trợ giúp ngươi đột
+    phá cảnh giới.
+- chinese: 道友请留步，贫道有事相询。
+  vietnamese: Đạo hữu xin dừng bước, bần đạo có điều muốn thỉnh giáo.

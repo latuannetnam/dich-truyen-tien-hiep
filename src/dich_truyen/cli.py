@@ -408,7 +408,26 @@ def style_list() -> None:
 @click.option("--output", "-o", required=True, type=click.Path(), help="Output YAML path")
 def style_generate(description: str, output: str) -> None:
     """Generate new style template using LLM."""
-    console.print("[yellow]Style generation not yet implemented[/yellow]")
+    import asyncio
+    from pathlib import Path
+    from dich_truyen.translator.style import generate_style_from_description
+
+    async def run():
+        console.print(f"[blue]Generating style from description...[/blue]")
+        console.print(f"[dim]  Description: {description}[/dim]")
+        
+        style = await generate_style_from_description(description)
+        
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        style.to_yaml(output_path)
+        
+        console.print(f"[green]✓ Style '{style.name}' generated successfully[/green]")
+        console.print(f"[dim]  {len(style.guidelines)} guidelines[/dim]")
+        console.print(f"[dim]  {len(style.vocabulary)} vocabulary entries[/dim]")
+        console.print(f"[dim]  {len(style.examples)} examples[/dim]")
+
+    asyncio.run(run())
 
 
 if __name__ == "__main__":

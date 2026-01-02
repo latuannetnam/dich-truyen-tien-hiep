@@ -248,9 +248,12 @@ class StyleManager:
         """Initialize the style manager.
 
         Args:
-            styles_dir: Directory for custom style templates
+            styles_dir: Directory for custom style templates (defaults to "styles")
         """
-        self.styles_dir = Path(styles_dir) if styles_dir else None
+        if styles_dir:
+            self.styles_dir = Path(styles_dir)
+        else:
+            self.styles_dir = Path("styles")
         self._cache: dict[str, StyleTemplate] = {}
 
     def list_available(self) -> list[str]:
@@ -285,18 +288,20 @@ class StyleManager:
         if name in self._cache:
             return self._cache[name]
 
-        # Check built-in
-        if name in BUILT_IN_STYLES:
-            self._cache[name] = BUILT_IN_STYLES[name]
-            return BUILT_IN_STYLES[name]
-
-        # Check custom styles directory
+        # Check custom styles directory FIRST (allows overriding built-in styles)
         if self.styles_dir:
             yaml_path = self.styles_dir / f"{name}.yaml"
             if yaml_path.exists():
+                console.print(f"[dim]  Using custom style: {yaml_path}[/dim]")
                 style = StyleTemplate.from_yaml(yaml_path)
                 self._cache[name] = style
                 return style
+
+        # Fall back to built-in
+        if name in BUILT_IN_STYLES:
+            console.print(f"[dim]  Using built-in style: {name}[/dim]")
+            self._cache[name] = BUILT_IN_STYLES[name]
+            return BUILT_IN_STYLES[name]
 
         raise ValueError(f"Style template not found: {name}")
 
