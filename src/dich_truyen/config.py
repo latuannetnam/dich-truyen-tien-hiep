@@ -59,6 +59,16 @@ class CalibreConfig(BaseSettings):
     path: str = Field(default="ebook-convert", description="Path to ebook-convert")
 
 
+class ExportConfig(BaseSettings):
+    """Export configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="EXPORT_")
+
+    parallel_workers: int = Field(default=8, description="Max threads for parallel file writing")
+    volume_size: int = Field(default=0, description="Chapters per volume (0=single book)")
+    fast_mode: bool = Field(default=True, description="Use direct EPUB assembly for speed")
+
+
 class AppConfig(BaseSettings):
     """Main application configuration."""
 
@@ -72,6 +82,7 @@ class AppConfig(BaseSettings):
     crawler: CrawlerConfig = Field(default_factory=CrawlerConfig)
     translation: TranslationConfig = Field(default_factory=TranslationConfig)
     calibre: CalibreConfig = Field(default_factory=CalibreConfig)
+    export: ExportConfig = Field(default_factory=ExportConfig)
 
     @classmethod
     def load(cls, env_file: Optional[Path] = None) -> "AppConfig":

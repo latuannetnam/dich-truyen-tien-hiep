@@ -228,24 +228,39 @@ def format_book(
     help="Output format",
 )
 @click.option("--calibre-path", help="Path to ebook-convert executable")
+@click.option("--fast/--no-fast", default=True, help="Use fast parallel EPUB assembly (recommended for large books)")
 @click.pass_context
 def export(
     ctx,
     book_dir: str,
     output_format: str,
     calibre_path: Optional[str],
+    fast: bool,
 ) -> None:
     """Phase 4: Export to ebook format.
 
     Converts formatted HTML to ebook using Calibre.
+    
+    With --fast (default): Uses parallel EPUB assembly for speed.
+    With --no-fast: Uses legacy HTML-based export.
     """
-    from dich_truyen.exporter.calibre import export_book
+    import asyncio
+    
+    if fast:
+        from dich_truyen.exporter.calibre import export_book_fast
+        
+        result = asyncio.run(export_book_fast(
+            book_dir=Path(book_dir),
+            output_format=output_format,
+        ))
+    else:
+        from dich_truyen.exporter.calibre import export_book
 
-    result = export_book(
-        book_dir=Path(book_dir),
-        output_format=output_format,
-        calibre_path=calibre_path,
-    )
+        result = export_book(
+            book_dir=Path(book_dir),
+            output_format=output_format,
+            calibre_path=calibre_path,
+        )
 
     if not result.success:
         console.print(f"[red]Export failed: {result.error_message}[/red]")

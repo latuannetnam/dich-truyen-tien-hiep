@@ -105,6 +105,7 @@ class CalibreExporter:
 
         # Add some sensible defaults
         cmd.extend([
+            "--verbose",  # Output detailed conversion info
             "--smarten-punctuation",
             "--no-chapters-in-toc",
             "--level1-toc", "//h:h2[@class='chapter-title']",
@@ -173,7 +174,7 @@ class CalibreExporter:
                 text=True,
                 encoding="utf-8",
                 errors="replace",  # Handle any encoding issues gracefully
-                timeout=300,  # 5 minute timeout
+                # timeout=300,  # 5 minute timeout
             )
 
             if result.returncode == 0:
@@ -236,3 +237,55 @@ def export_book(
         metadata=metadata,
         output_dir=book_dir / "output",
     )
+
+
+async def export_book_fast(
+    book_dir: Path,
+    output_format: str = "azw3",
+) -> ExportResult:
+    """Fast export using direct EPUB assembly.
+    
+    This is much faster than the HTML-based export for large books.
+    Creates EPUB directly, then converts to target format if needed.
+    
+    Args:
+        book_dir: Book directory path
+        output_format: Output format (epub, azw3, mobi, pdf)
+        
+    Returns:
+        ExportResult
+    """
+    from dich_truyen.exporter.epub_assembler import assemble_book_fast
+    
+    book_dir = Path(book_dir)
+    output_format = output_format.lower()
+    
+    # Step 1: Create EPUB using fast assembler
+    try:
+        epub_path = await assemble_book_fast(book_dir)
+    except Exception as e:
+        return ExportResult(success=False, error_message=f"EPUB assembly failed: {e}")
+    
+    # Step 2: If output is EPUB, we're done
+    if output_format == "epub":
+        return ExportResult(success=True, output_path=str(epub_path))
+    
+    # Step 3: Convert EPUB to target format using Calibre
+    console.print(f"[blue]Converting EPUB to {output_format.upper()}...[/blue]")
+    
+    exporter = CalibreExporter()
+    
+    # Load metadata
+    progress = BookProgress.load(book_dir)
+    if progress:
+        metadata = BookMetadataManager.from_book_progress(progress)
+    else:
+        metadata = None
+    
+    return exporter.export(
+        input_html=epub_path,  # EPUB as input
+        output_format=output_format,
+        metadata=metadata,
+        output_dir=book_dir / "output",
+    )
+
