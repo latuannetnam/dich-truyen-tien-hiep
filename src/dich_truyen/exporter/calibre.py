@@ -193,53 +193,7 @@ class CalibreExporter:
             return ExportResult(success=False, error_message=str(e))
 
 
-def export_book(
-    book_dir: Path,
-    output_format: str = "epub",
-    calibre_path: Optional[str] = None,
-) -> ExportResult:
-    """Export a book to ebook format.
-
-    Args:
-        book_dir: Book directory path
-        output_format: Output format
-        calibre_path: Optional custom Calibre path
-
-    Returns:
-        ExportResult
-    """
-    book_dir = Path(book_dir)
-    formatted_html = book_dir / "formatted" / "book.html"
-
-    if not formatted_html.exists():
-        return ExportResult(
-            success=False,
-            error_message=f"Formatted HTML not found. Run 'format' command first: {formatted_html}",
-        )
-
-    # Load metadata
-    progress = BookProgress.load(book_dir)
-    if progress:
-        metadata = BookMetadataManager.from_book_progress(progress)
-    else:
-        metadata = None
-
-    # Create exporter
-    config = CalibreConfig()
-    if calibre_path:
-        config.path = calibre_path
-
-    exporter = CalibreExporter(config)
-
-    return exporter.export(
-        input_html=formatted_html,
-        output_format=output_format,
-        metadata=metadata,
-        output_dir=book_dir / "output",
-    )
-
-
-async def export_book_fast(
+async def export_book(
     book_dir: Path,
     output_format: str = "azw3",
 ) -> ExportResult:

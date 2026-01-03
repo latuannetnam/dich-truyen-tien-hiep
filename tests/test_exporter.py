@@ -100,64 +100,58 @@ class TestExportBook:
 
     @pytest.fixture
     def book_dir(self, tmp_path):
-        """Create test book directory structure."""
+        """Create test book directory structure with translated chapters."""
         book_dir = tmp_path / "test-book"
         book_dir.mkdir()
 
         # Create directories
-        (book_dir / "formatted").mkdir()
+        (book_dir / "translated").mkdir()
         (book_dir / "output").mkdir()
 
-        # Create book.json
+        # Create book.json with chapters
         progress = BookProgress(
             url="http://example.com",
             title="剑来",
             title_vi="Kiếm Lai",
             author="烽火戏诸侯",
-            chapters=[],
+            chapters=[
+                Chapter(id="ch1", index=1, url="http://example.com/1", title="第一章", title_vi="Chương 1", status=ChapterStatus.TRANSLATED),
+            ],
         )
         progress.save(book_dir)
 
-        # Create formatted HTML
-        (book_dir / "formatted" / "book.html").write_text(
-            """<!DOCTYPE html>
-<html lang="vi">
-<head><title>Kiếm Lai</title></head>
-<body>
-<h1>Kiếm Lai</h1>
-<h2 class="chapter-title">Chương 1</h2>
-<p>Nội dung chương 1.</p>
-</body>
-</html>""",
+        # Create translated chapter
+        (book_dir / "translated" / "1.txt").write_text(
+            "Nội dung chương 1.\n\nĐoạn văn thứ hai.",
             encoding="utf-8",
         )
 
         return book_dir
 
-    def test_html_not_found(self, tmp_path):
-        """Test error when HTML not found."""
+    @pytest.mark.asyncio
+    async def test_no_translated_chapters(self, tmp_path):
+        """Test error when no translated chapters found."""
         book_dir = tmp_path / "empty-book"
         book_dir.mkdir()
-        (book_dir / "formatted").mkdir()
+        (book_dir / "translated").mkdir()
+        
+        # Create book.json with no chapters
+        progress = BookProgress(url="http://example.com", title="Test", chapters=[])
+        progress.save(book_dir)
 
-        result = export_book(book_dir, "epub")
+        result = await export_book(book_dir, "epub")
         assert not result.success
-        assert "not found" in result.error_message
+        assert "No translated chapters" in result.error_message
 
-    @patch('dich_truyen.exporter.calibre.CalibreExporter.export')
-    def test_export_with_metadata(self, mock_export, book_dir):
-        """Test export uses metadata from book progress."""
-        mock_export.return_value = ExportResult(
-            success=True, output_path=str(book_dir / "output/book.epub")
-        )
+    @pytest.mark.asyncio
+    async def test_export_creates_epub(self, book_dir):
+        """Test export creates EPUB file."""
+        result = await export_book(book_dir, "epub")
 
-        result = export_book(book_dir, "epub")
-
-        # Verify export was called with metadata
-        mock_export.assert_called_once()
-        call_args = mock_export.call_args
-        assert call_args.kwargs['metadata'] is not None
-        assert call_args.kwargs['metadata'].title == "Kiếm Lai"
+        assert result.success
+        assert result.output_path is not None
+        assert Path(result.output_path).exists()
+        assert Path(result.output_path).suffix == ".epub"
 
 
 class TestCalibeFinding:

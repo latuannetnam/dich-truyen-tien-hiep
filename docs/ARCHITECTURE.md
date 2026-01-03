@@ -4,16 +4,16 @@ This document explains the internal workings and architecture of the Dịch Truy
 
 ## Overview
 
-The application follows a 4-phase pipeline architecture:
+The application follows a 3-phase pipeline architecture:
 
 ```
-┌─────────┐     ┌───────────┐     ┌──────────┐     ┌──────────┐
-│  CRAWL  │────▶│ TRANSLATE │────▶│  FORMAT  │────▶│  EXPORT  │
-│         │     │           │     │          │     │          │
-│ Download│     │  Chinese  │     │  HTML    │     │  EPUB    │
-│ chapters│     │    to     │     │ assembly │     │  AZW3    │
-│ from web│     │Vietnamese │     │  + TOC   │     │  PDF     │
-└─────────┘     └───────────┘     └──────────┘     └──────────┘
+┌─────────┐     ┌───────────┐     ┌──────────────────┐
+│  CRAWL  │────▶│ TRANSLATE │────▶│      EXPORT      │
+│         │     │           │     │                  │
+│ Download│     │  Chinese  │     │ Direct EPUB      │
+│ chapters│     │    to     │     │ assembly with    │
+│ from web│     │Vietnamese │     │ parallel writing │
+└─────────┘     └───────────┘     └──────────────────┘
 ```
 
 ## Key Files Map
@@ -28,9 +28,9 @@ The application follows a 4-phase pipeline architecture:
 | | `translator/style.py` | Style templates & priority loading logic |
 | | `translator/glossary.py` | Term management & auto-generation |
 | | `translator/term_scorer.py` | TF-IDF based glossary selection |
-| **Format** | `formatter/assembler.py` | HTML book assembly with TOC generation |
+| **Export** | `exporter/epub_assembler.py` | Direct EPUB assembly with parallel writing |
+| | `exporter/calibre.py` | Calibre integration for AZW3/MOBI/PDF |
 | | `formatter/metadata.py` | Book metadata handling |
-| **Export** | `exporter/calibre.py` | Calibre ebook-convert integration |
 | **CLI** | `cli.py` | All CLI commands implementation |
 | **Config** | `config.py` | Pydantic settings & env vars |
 | **Progress** | `utils/progress.py` | BookProgress & status data models |
@@ -291,67 +291,101 @@ Output:        [==Trans1==] + [==Trans2==] + [==Trans3==]
 
 ---
 
-## Phase 3: Formatting
+## Phase 3: Export
 
-### HTML Assembly
+### Direct EPUB Assembly
 
-```python
-class HTMLAssembler:
-    def assemble(self):
-        # 1. Load book metadata (title_vi, author_vi)
-        metadata = BookMetadataManager.from_book_progress(progress)
-        
-        # 2. Generate HTML header with CSS
-        html = generate_header(metadata)
-        
-        # 3. Add title page
-        html += generate_title_page(metadata)
-        
-        # 4. Generate TOC with chapter links
-        html += generate_toc(chapters)
-        
-        # 5. Add each chapter with Vietnamese titles
-        for chapter in chapters:
-            html += format_chapter(chapter)
-        
-        # 6. Save to formatted/book.html
-        save(html)
+The export phase creates EPUB files directly from translated chapters using parallel processing:
+
+```
+Translated Chapters (/translated/*.txt)
+              │
+              ▼ (parallel file writing)
+┌──────────────────────────────────────────────────────────┐
+│    DirectEPUBAssembler                                   │
+│                                                          │
+│    ThreadPool (8 workers):                               │
+│    ├── Worker 1: chapter_0001.xhtml                      │
+│    ├── Worker 2: chapter_0002.xhtml                      │
+│    ├── ...                                               │
+│    └── Worker 8: chapter_0008.xhtml                      │
+│                                                          │
+│    Generate: content.opf, toc.ncx, styles.css            │
+│    ZIP → book.epub                                       │
+└──────────────────────────────────────────────────────────┘
+              │
+              ▼ (if format ≠ epub)
+┌──────────────────────────────────────────────────────────┐
+│    Calibre Conversion: EPUB → AZW3/MOBI/PDF              │
+└──────────────────────────────────────────────────────────┘
+              │
+              ▼
+         book.azw3 (or other format)
 ```
 
-### Metadata Translation
+### EPUB Structure Generated
 
-Book metadata is automatically translated during the translation phase:
-
-```python
-# Translates book title and author name to Vietnamese
-if not progress.title_vi:
-    progress.title_vi = await llm.translate_title(progress.title, "book")
-    progress.author_vi = await llm.translate_title(progress.author, "author")
+```
+epub_build/
+├── mimetype                    # "application/epub+zip"
+├── META-INF/
+│   └── container.xml           # Points to content.opf
+└── OEBPS/
+    ├── content.opf             # Manifest + spine
+    ├── toc.ncx                 # Navigation
+    ├── styles.css              # Shared CSS
+    ├── titlepage.xhtml         # Title page
+    └── chapters/
+        ├── chapter_0001.xhtml
+        ├── chapter_0002.xhtml
+        └── ... (all chapters)
 ```
 
----
+### Parallel Chapter Writing
 
-## Phase 4: Export
+```python
+class DirectEPUBAssembler:
+    async def assemble(self, book_dir, chapters):
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            # Write chapter files in parallel
+            tasks = [
+                loop.run_in_executor(
+                    executor,
+                    self._write_chapter_file,
+                    chapters_dir, index, chapter
+                )
+                for index, chapter in enumerate(chapters, 1)
+            ]
+            await asyncio.gather(*tasks)
+        
+        # Generate manifest and TOC
+        self._write_manifest(oebps_dir, chapters)
+        self._write_toc(oebps_dir, chapters)
+        
+        # ZIP into EPUB
+        self._create_epub_zip(work_dir, epub_path)
+```
+
+### Progress Display
+
+```
+Assembling EPUB with 1200 chapters...
+Writing chapters... [450/1200] ━━━━━━━━━━━━━━━━━ 38%
+Generating manifest... ━━━━━━━━━━━━━━━━━━━━━━━━━━ 95%
+Creating EPUB archive... ━━━━━━━━━━━━━━━━━━━━━━━ 98%
+Converting to AZW3... ━━━━━━━━━━━━━━━━━━━━━━━━━ 100%
+```
 
 ### Calibre Integration
 
+For non-EPUB formats, Calibre converts the generated EPUB:
+
 ```python
-class CalibreExporter:
-    def export(self, book_dir, output_format):
-        # 1. Build Calibre command
-        cmd = [
-            "ebook-convert",
-            "formatted/book.html",
-            f"output/book.{output_format}",
-            "--title", metadata.title,
-            "--authors", metadata.author,
-        ]
-        
-        # 2. Execute conversion
-        result = subprocess.run(cmd)
-        
-        # 3. Return result path
-        return output_path
+# EPUB → AZW3 is much faster than HTML → AZW3
+exporter.export(
+    input_html=epub_path,  # EPUB as input
+    output_format="azw3",
+)
 ```
 
 **Supported formats:** EPUB, AZW3 (Kindle), PDF, MOBI
@@ -430,6 +464,7 @@ class AppConfig(BaseSettings):
     crawler: CrawlerConfig   # CRAWLER_* env vars
     translation: TranslationConfig  # TRANSLATION_* env vars
     calibre: CalibreConfig   # CALIBRE_* env vars
+    export: ExportConfig     # EXPORT_* env vars
 ```
 
 ### Environment Variables
@@ -440,6 +475,7 @@ class AppConfig(BaseSettings):
 | `CRAWLER_` | HTTP client settings (delay, retries, timeout) |
 | `TRANSLATION_` | Translation & glossary settings |
 | `CALIBRE_` | Ebook converter path |
+| `EXPORT_` | Export settings (parallel workers, fast mode) |
 
 #### Key Translation Variables
 
@@ -451,6 +487,14 @@ class AppConfig(BaseSettings):
 | `TRANSLATION_PROGRESSIVE_GLOSSARY` | true | Extract new terms during translation |
 | `TRANSLATION_GLOSSARY_SAMPLE_CHAPTERS` | 5 | Chapters to sample for initial glossary |
 | `TRANSLATION_GLOSSARY_SAMPLE_SIZE` | 3000 | Characters per sample chapter |
+
+#### Key Export Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `EXPORT_PARALLEL_WORKERS` | 8 | Threads for parallel chapter file writing |
+| `EXPORT_VOLUME_SIZE` | 0 | Chapters per volume (0 = single book) |
+| `EXPORT_FAST_MODE` | true | Use direct EPUB assembly |
 
 ---
 
@@ -467,10 +511,16 @@ books/
     ├── translated/         # Translated chapters
     │   ├── 1.txt
     │   └── ...
-    ├── formatted/
-    │   └── book.html       # Assembled HTML
+    ├── epub_build/         # EPUB build directory (auto-generated)
+    │   ├── mimetype
+    │   ├── META-INF/
+    │   └── OEBPS/
+    │       ├── chapters/   # Chapter XHTML files
+    │       ├── content.opf
+    │       └── toc.ncx
     └── output/
-        └── book.azw3       # Exported ebook
+        ├── book.epub       # Generated EPUB
+        └── book.azw3       # Converted ebook
 ```
 
 ---

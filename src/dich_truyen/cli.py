@@ -167,53 +167,6 @@ def translate(
 
 
 # =============================================================================
-# Format Command
-# =============================================================================
-
-
-@cli.command("format")
-@click.option("--book-dir", required=True, type=click.Path(exists=True), help="Book directory")
-@click.option("--title", help="Override book title")
-@click.option("--author", help="Override author name")
-@click.option("--translator", help="Translator name")
-@click.option("--cover", type=click.Path(exists=True), help="Cover image path")
-@click.pass_context
-def format_book(
-    ctx,
-    book_dir: str,
-    title: Optional[str],
-    author: Optional[str],
-    translator: Optional[str],
-    cover: Optional[str],
-) -> None:
-    """Phase 3: Format translated chapters into HTML.
-
-    Assembles translated chapters into a single HTML file with TOC.
-    """
-    from dich_truyen.formatter.assembler import HTMLAssembler
-
-    assembler = HTMLAssembler(Path(book_dir))
-
-    # Handle cover image
-    if cover:
-        import shutil
-        cover_path = Path(cover)
-        dest_cover = Path(book_dir) / "cover" / cover_path.name
-        dest_cover.parent.mkdir(exist_ok=True)
-        shutil.copy(cover_path, dest_cover)
-        assembler.load_book_data()
-        assembler.metadata.cover_path = str(dest_cover)
-
-    output_path = assembler.assemble(
-        title=title,
-        author=author,
-        translator=translator,
-    )
-
-    console.print(f"[green]HTML book created: {output_path}[/green]")
-
-
-# =============================================================================
 # Export Command
 # =============================================================================
 
@@ -227,40 +180,25 @@ def format_book(
     type=click.Choice(["epub", "azw3", "mobi", "pdf"]),
     help="Output format",
 )
-@click.option("--calibre-path", help="Path to ebook-convert executable")
-@click.option("--fast/--no-fast", default=True, help="Use fast parallel EPUB assembly (recommended for large books)")
 @click.pass_context
 def export(
     ctx,
     book_dir: str,
     output_format: str,
-    calibre_path: Optional[str],
-    fast: bool,
 ) -> None:
-    """Phase 4: Export to ebook format.
+    """Export to ebook format.
 
-    Converts formatted HTML to ebook using Calibre.
-    
-    With --fast (default): Uses parallel EPUB assembly for speed.
-    With --no-fast: Uses legacy HTML-based export.
+    Creates EPUB directly from translated chapters using parallel assembly,
+    then converts to target format if needed.
     """
     import asyncio
     
-    if fast:
-        from dich_truyen.exporter.calibre import export_book_fast
-        
-        result = asyncio.run(export_book_fast(
-            book_dir=Path(book_dir),
-            output_format=output_format,
-        ))
-    else:
-        from dich_truyen.exporter.calibre import export_book
-
-        result = export_book(
-            book_dir=Path(book_dir),
-            output_format=output_format,
-            calibre_path=calibre_path,
-        )
+    from dich_truyen.exporter.calibre import export_book
+    
+    result = asyncio.run(export_book(
+        book_dir=Path(book_dir),
+        output_format=output_format,
+    ))
 
     if not result.success:
         console.print(f"[red]Export failed: {result.error_message}[/red]")
@@ -297,14 +235,13 @@ def pipeline(
     book_dir: Optional[str],
     force: bool,
 ) -> None:
-    """Run full pipeline: crawl → translate → format → export.
+    """Run full pipeline: crawl → translate → export.
 
     Complete end-to-end processing of a Chinese novel.
     """
     from dich_truyen.config import get_config
     from dich_truyen.crawler.downloader import ChapterDownloader, create_book_directory
     from dich_truyen.exporter.calibre import export_book
-    from dich_truyen.formatter.assembler import HTMLAssembler
     from dich_truyen.translator.engine import setup_translation
 
     async def run():
@@ -343,16 +280,10 @@ def pipeline(
         if translate_result.failed > 0:
             console.print(f"[yellow]Warning: {translate_result.failed} chapters failed to translate[/yellow]")
 
-        # Phase 3: Format
-        console.print("\n[bold blue]═══ Phase 3: Formatting ═══[/bold blue]")
+        # Phase 3: Export (direct EPUB assembly)
+        console.print("\n[bold blue]═══ Phase 3: Exporting ═══[/bold blue]")
         
-        assembler = HTMLAssembler(target_dir)
-        html_path = assembler.assemble()
-
-        # Phase 4: Export
-        console.print("\n[bold blue]═══ Phase 4: Exporting ═══[/bold blue]")
-        
-        export_result = export_book(
+        export_result = await export_book(
             book_dir=target_dir,
             output_format=output_format,
         )
