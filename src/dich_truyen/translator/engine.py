@@ -4,7 +4,10 @@ import asyncio
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from dich_truyen.translator.term_scorer import SimpleTermScorer
 
 from pydantic import BaseModel
 from rich.console import Console
@@ -38,6 +41,7 @@ class TranslationEngine:
         style: Optional[StyleTemplate] = None,
         glossary: Optional[Glossary] = None,
         config: Optional[TranslationConfig] = None,
+        term_scorer: Optional["SimpleTermScorer"] = None,
     ):
         """Initialize the translation engine.
 
@@ -46,11 +50,13 @@ class TranslationEngine:
             style: Style template for translation
             glossary: Glossary for consistent terms
             config: Translation configuration
+            term_scorer: Optional TF-IDF scorer for intelligent glossary selection
         """
         self.llm = llm or LLMClient()
         self.style = style
         self.glossary = glossary or Glossary()
         self.config = config or get_config().translation
+        self.term_scorer = term_scorer
 
     def _is_dialogue_paragraph(self, para: str) -> bool:
         """Check if paragraph contains dialogue that should stay together.
@@ -197,9 +203,14 @@ class TranslationEngine:
             raise ValueError("Style template not set")
 
         style_prompt = self.style.to_prompt_format()
-        # Limit glossary entries per chunk to avoid token limits
+        # Use TF-IDF based relevant glossary selection if scorer available
         max_glossary = self.config.glossary_max_entries
-        glossary_prompt = self.glossary.to_prompt_format(max_entries=max_glossary) if self.glossary else ""
+        if self.glossary:
+            glossary_prompt = self.glossary.format_relevant_entries(
+                chunk, scorer=self.term_scorer, max_entries=max_glossary
+            )
+        else:
+            glossary_prompt = ""
 
         return await self.llm.translate(
             text=chunk,
@@ -226,9 +237,14 @@ class TranslationEngine:
             raise ValueError("Style template not set")
 
         style_prompt = self.style.to_prompt_format()
-        # Limit glossary entries per chunk to avoid token limits
+        # Use TF-IDF based relevant glossary selection if scorer available
         max_glossary = self.config.glossary_max_entries
-        glossary_prompt = self.glossary.to_prompt_format(max_entries=max_glossary) if self.glossary else ""
+        if self.glossary:
+            glossary_prompt = self.glossary.format_relevant_entries(
+                main_text, scorer=self.term_scorer, max_entries=max_glossary
+            )
+        else:
+            glossary_prompt = ""
 
         if context_text:
             # Use context as reference but only translate main_text
@@ -622,9 +638,38 @@ async def setup_translation(
         
         progress.save(book_dir)
 
+    # Initialize TF-IDF scorer for intelligent glossary selection
+    term_scorer = None
+    if len(glossary) > 0:
+        from dich_truyen.translator.term_scorer import SimpleTermScorer
+        
+        console.print("[dim]Initializing TF-IDF scorer for glossary selection...[/dim]")
+        
+        # Read all chapter contents for IDF calculation
+        raw_dir = book_dir / "raw"
+        all_files = sorted(raw_dir.glob("*.txt"))
+        documents = []
+        for txt_file in all_files:
+            try:
+                with open(txt_file, "r", encoding="utf-8") as f:
+                    documents.append(f.read())
+            except Exception:
+                pass  # Skip files that can't be read
+        
+        if documents:
+            # Extract glossary terms
+            terms = [entry.chinese for entry in glossary.entries]
+            
+            # Fit the scorer
+            term_scorer = SimpleTermScorer()
+            term_scorer.fit(documents, terms)
+            
+            console.print(f"[dim]  TF-IDF scorer fitted with {len(documents)} chapters, {len(terms)} terms[/dim]")
+
     return TranslationEngine(
         style=style,
         glossary=glossary,
+        term_scorer=term_scorer,
     )
 
 

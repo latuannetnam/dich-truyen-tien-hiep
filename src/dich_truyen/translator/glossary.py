@@ -3,7 +3,10 @@
 import csv
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from dich_truyen.translator.term_scorer import TermScorer
 
 from pydantic import BaseModel, Field
 from rich.console import Console
@@ -132,6 +135,105 @@ class Glossary:
         lines = []
         for category in self.CATEGORIES:
             category_entries = [e for e in entries_to_use if e.category == category]
+            if category_entries:
+                category_name = {
+                    "character": "Nhân vật",
+                    "realm": "Cảnh giới",
+                    "technique": "Võ công/Pháp thuật",
+                    "location": "Địa danh",
+                    "item": "Vật phẩm",
+                    "organization": "Môn phái/Thế lực",
+                    "general": "Thuật ngữ chung",
+                }.get(category, category)
+
+                lines.append(f"### {category_name}")
+                for entry in category_entries:
+                    lines.append(f"- {entry.chinese} → {entry.vietnamese}")
+                lines.append("")
+
+        return "\n".join(lines)
+
+    def get_relevant_entries(
+        self,
+        chunk: str,
+        scorer: Optional["TermScorer"] = None,
+        max_entries: int = 100,
+    ) -> list[GlossaryEntry]:
+        """Get glossary entries relevant to a specific chunk.
+        
+        If a scorer is provided, uses TF-IDF to rank terms by relevance.
+        Otherwise falls back to simple presence check with category priority.
+        
+        Args:
+            chunk: Text chunk to find relevant entries for
+            scorer: Optional TermScorer for TF-IDF based ranking
+            max_entries: Maximum entries to return
+            
+        Returns:
+            List of relevant GlossaryEntry items, sorted by relevance
+        """
+        if not self.entries:
+            return []
+        
+        if scorer and scorer.is_fitted():
+            # TF-IDF based selection
+            scores = scorer.score_for_chunk(chunk)
+            
+            # Get entries that have scores (present in chunk)
+            scored_entries = [
+                (entry, scores.get(entry.chinese, 0))
+                for entry in self.entries
+                if entry.chinese in scores
+            ]
+            
+            # Sort by score descending
+            scored_entries.sort(key=lambda x: -x[1])
+            
+            # Take top entries
+            return [entry for entry, _ in scored_entries[:max_entries]]
+        else:
+            # Fallback: simple presence check with category priority
+            priority_order = ["character", "realm", "technique", "location", "item", "organization", "general"]
+            
+            relevant = [
+                entry for entry in self.entries
+                if entry.chinese in chunk
+            ]
+            
+            # Sort by category priority
+            relevant.sort(
+                key=lambda e: priority_order.index(e.category) if e.category in priority_order else 99
+            )
+            
+            return relevant[:max_entries]
+
+    def format_relevant_entries(
+        self,
+        chunk: str,
+        scorer: Optional["TermScorer"] = None,
+        max_entries: int = 100,
+    ) -> str:
+        """Format relevant glossary entries for a specific chunk.
+        
+        Combines get_relevant_entries with formatting.
+        
+        Args:
+            chunk: Text chunk to find relevant entries for
+            scorer: Optional TermScorer for TF-IDF based ranking
+            max_entries: Maximum entries to include
+            
+        Returns:
+            Formatted string for LLM prompt
+        """
+        entries = self.get_relevant_entries(chunk, scorer, max_entries)
+        
+        if not entries:
+            return ""
+        
+        # Group by category
+        lines = []
+        for category in self.CATEGORIES:
+            category_entries = [e for e in entries if e.category == category]
             if category_entries:
                 category_name = {
                     "character": "Nhân vật",

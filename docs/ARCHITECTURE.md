@@ -27,6 +27,7 @@ The application follows a 4-phase pipeline architecture:
 | | `translator/llm.py` | OpenAI API wrapper with retry logic |
 | | `translator/style.py` | Style templates & priority loading logic |
 | | `translator/glossary.py` | Term management & auto-generation |
+| | `translator/term_scorer.py` | TF-IDF based glossary selection |
 | **Format** | `formatter/assembler.py` | HTML book assembly with TOC generation |
 | | `formatter/metadata.py` | Book metadata handling |
 | **Export** | `exporter/calibre.py` | Calibre ebook-convert integration |
@@ -173,6 +174,45 @@ new_terms = await extract_new_terms_from_chapter(
 glossary.add(new_terms)
 glossary.save(book_dir)  # Auto-save after each chapter
 ```
+
+#### TF-IDF Based Glossary Selection
+
+Intelligent term selection using TF-IDF scoring - only includes glossary terms **relevant to each chunk**:
+
+```
+Setup Phase:
+┌──────────────────────────────────────────────────────────┐
+│  1. Read all chapter files                               │
+│  2. For each glossary term, count how many chapters      │
+│     contain it (Document Frequency)                      │
+│  3. Calculate IDF = log(total_chapters / df)             │
+│     Higher IDF = rarer term = more important             │
+└──────────────────────────────────────────────────────────┘
+
+Per Chunk:
+┌──────────────────────────────────────────────────────────┐
+│  1. Find glossary terms present in chunk                 │
+│  2. Calculate TF = count of term in chunk                │
+│  3. Score = TF × IDF                                     │
+│  4. Select top-scoring terms (up to max_entries)         │
+└──────────────────────────────────────────────────────────┘
+```
+
+```python
+# Abstraction layer for future library replacement
+class TermScorer(Protocol):
+    def fit(documents: list[str], terms: list[str]) -> None
+    def score_for_chunk(chunk: str) -> dict[str, float]
+    def is_fitted() -> bool
+
+# Current implementation: SimpleTermScorer (pure Python)
+# Future: JiebaTermScorer, SklearnTermScorer
+```
+
+**Benefits:**
+- **Token efficient**: Only relevant terms sent to LLM
+- **Prioritizes rare terms**: Unique names/locations get higher scores
+- **Automatic**: No manual configuration needed
 
 ### Smart Dialogue Chunking
 
