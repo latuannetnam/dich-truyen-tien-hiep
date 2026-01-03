@@ -197,7 +197,9 @@ class TranslationEngine:
             raise ValueError("Style template not set")
 
         style_prompt = self.style.to_prompt_format()
-        glossary_prompt = self.glossary.to_prompt_format() if self.glossary else ""
+        # Limit glossary entries per chunk to avoid token limits
+        max_glossary = self.config.glossary_max_entries
+        glossary_prompt = self.glossary.to_prompt_format(max_entries=max_glossary) if self.glossary else ""
 
         return await self.llm.translate(
             text=chunk,
@@ -224,7 +226,9 @@ class TranslationEngine:
             raise ValueError("Style template not set")
 
         style_prompt = self.style.to_prompt_format()
-        glossary_prompt = self.glossary.to_prompt_format() if self.glossary else ""
+        # Limit glossary entries per chunk to avoid token limits
+        max_glossary = self.config.glossary_max_entries
+        glossary_prompt = self.glossary.to_prompt_format(max_entries=max_glossary) if self.glossary else ""
 
         if context_text:
             # Use context as reference but only translate main_text

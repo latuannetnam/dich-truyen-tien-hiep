@@ -105,8 +105,12 @@ class Glossary:
         """
         return [e for e in self.entries if e.category == category]
 
-    def to_prompt_format(self) -> str:
+    def to_prompt_format(self, max_entries: Optional[int] = None) -> str:
         """Format glossary for inclusion in LLM prompt.
+
+        Args:
+            max_entries: Maximum entries to include (None = all entries).
+                        If limited, prioritizes characters and important categories.
 
         Returns:
             Formatted string for prompt
@@ -114,10 +118,21 @@ class Glossary:
         if not self.entries:
             return ""
 
+        # If max_entries specified, select most important entries
+        entries_to_use = self.entries
+        if max_entries and len(self.entries) > max_entries:
+            # Priority order: characters first, then other categories
+            priority_order = ["character", "realm", "technique", "location", "item", "organization", "general"]
+            sorted_entries = sorted(
+                self.entries,
+                key=lambda e: priority_order.index(e.category) if e.category in priority_order else 99
+            )
+            entries_to_use = sorted_entries[:max_entries]
+
         lines = []
         for category in self.CATEGORIES:
-            entries = self.get_by_category(category)
-            if entries:
+            category_entries = [e for e in entries_to_use if e.category == category]
+            if category_entries:
                 category_name = {
                     "character": "Nhân vật",
                     "realm": "Cảnh giới",
@@ -129,7 +144,7 @@ class Glossary:
                 }.get(category, category)
 
                 lines.append(f"### {category_name}")
-                for entry in entries:
+                for entry in category_entries:
                     lines.append(f"- {entry.chinese} → {entry.vietnamese}")
                 lines.append("")
 
