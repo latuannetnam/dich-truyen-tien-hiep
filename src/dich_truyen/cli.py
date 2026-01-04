@@ -151,11 +151,12 @@ def pipeline(
         if result.failed_crawl > 0 or result.failed_translate > 0:
             console.print(f"[yellow]Warning: {result.failed_crawl} crawl errors, {result.failed_translate} translate errors[/yellow]")
         
-        # Export phase (skip if crawl-only or skip-export or no translations)
+        # Export phase (only if all chapters are done, not cancelled)
+        # Use result.all_done which is True only if all chapters translated AND not cancelled
         should_export = (
             not crawl_only 
             and not skip_export 
-            and result.translated > 0
+            and result.all_done
         )
         
         if should_export:
@@ -175,6 +176,12 @@ def pipeline(
             console.print("\n[dim]Translation/export skipped (--crawl-only)[/dim]")
         elif skip_export:
             console.print("\n[dim]Export skipped (--skip-export)[/dim]")
+        elif result.cancelled:
+            console.print("\n[yellow]Export skipped (cancelled by user)[/yellow]")
+            console.print("[dim]Run 'dich-truyen export' to manually export available chapters[/dim]")
+        elif not result.all_done:
+            console.print("\n[yellow]Export skipped (not all chapters translated)[/yellow]")
+            console.print("[dim]Resume with same command, or run 'dich-truyen export' to export available chapters[/dim]")
 
     asyncio.run(run())
 

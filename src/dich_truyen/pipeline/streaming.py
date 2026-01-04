@@ -33,6 +33,8 @@ class PipelineResult(BaseModel):
     failed_crawl: int = 0
     failed_translate: int = 0
     errors: list[str] = []
+    cancelled: bool = False  # True if user pressed Ctrl+C
+    all_done: bool = False   # True if all chapters in range are translated
 
 
 @dataclass
@@ -333,8 +335,15 @@ class StreamingPipeline:
         except asyncio.CancelledError:
             console.print("[yellow]Pipeline cancelled[/yellow]")
             self._stop_requested = True
+            self._cancelled = True  # Track cancellation
             for task in tasks:
                 task.cancel()
+        
+        # Determine if all chapters in range are done
+        # all_done = all chapters translated (no pending crawl or translate)
+        total_target = len(to_crawl) + len(to_translate)
+        all_translated = self.stats.chapters_translated >= total_target
+        was_cancelled = getattr(self, '_cancelled', False)
         
         # Final summary
         console.print(f"\n[bold green]═══ Pipeline Complete! ═══[/bold green]")
@@ -359,6 +368,8 @@ class StreamingPipeline:
             failed_crawl=self.stats.crawl_errors,
             failed_translate=self.stats.translate_errors,
             errors=self.stats.errors,
+            cancelled=was_cancelled,
+            all_done=all_translated and not was_cancelled,
         )
     
     async def _crawl_producer(self, chapters: list[Chapter]) -> None:

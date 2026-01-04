@@ -11,28 +11,61 @@ The application uses a **streaming pipeline architecture** with concurrent crawl
 │                     StreamingPipeline                            │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  ┌──────────────┐                                               │
-│  │   Crawler    │──────▶ Queue ──────▶ ┌─────────────────┐      │
-│  │  (Producer)  │                      │ Translator      │      │
-│  │              │       ┌──────────────│ Worker 1        │      │
-│  │  Download    │       │              └─────────────────┘      │
-│  │  chapters    │       │              ┌─────────────────┐      │
-│  │  one by one  │       └──────────────│ Translator      │      │
-│  └──────────────┘                      │ Worker 2        │      │
-│                                        └─────────────────┘      │
-│                                        ┌─────────────────┐      │
-│                                        │ Translator      │      │
-│                                        │ Worker 3        │      │
-│                                        └─────────────────┘      │
+│  ┌──────────────┐        UNBOUNDED                              │
+│  │   Crawler    │──────▶  QUEUE  ──────▶ ┌─────────────────┐    │
+│  │  (Producer)  │         (∞)            │ Translator      │    │
+│  │              │       ┌────────────────│ Worker 1        │    │
+│  │  Download    │       │                └─────────────────┘    │
+│  │  chapters    │       │                ┌─────────────────┐    │
+│  │  (never      │       └────────────────│ Translator      │    │
+│  │   blocks)    │                        │ Worker 2        │    │
+│  └──────────────┘                        └─────────────────┘    │
+│        ↓                                 ┌─────────────────┐    │
+│  Saves to disk                           │ Translator      │    │
+│  immediately                             │ Worker 3        │    │
+│                                          └─────────────────┘    │
 │                                                                  │
 │  ═══════════════════════════════════════════════════════════    │
 │                              ▼                                   │
 │                     ┌──────────────┐                            │
-│                     │    EXPORT    │                            │
+│                     │    EXPORT    │ (only when all_done=True)  │
 │                     │ Direct EPUB  │                            │
 │                     │ + Calibre    │                            │
 │                     └──────────────┘                            │
 └─────────────────────────────────────────────────────────────────┘
+```
+
+### Unbounded Queue Design
+
+The pipeline uses an **unbounded queue** (`maxsize=0`) between crawler and translators:
+
+| Aspect | Behavior |
+|--------|----------|
+| **Crawler (Producer)** | Downloads chapters continuously, never blocks on queue |
+| **Queue** | Unlimited size, stores chapter references (minimal memory) |
+| **Translators (Consumers)** | Process chapters from queue at their own pace |
+| **Resume** | Each chapter status saved to disk immediately after crawl/translate |
+
+**Benefits:**
+- Crawler can finish downloading all chapters while translation is still in progress
+- No back-pressure blocking - maximizes download speed
+- Interrupt-safe: status saved per-chapter, resume picks up where it left off
+
+### Conditional Export
+
+Auto-export only triggers when **all chapters are complete**:
+
+```python
+# Only export when:
+# - All chapters in range translated
+# - NOT cancelled by user (Ctrl+C)
+should_export = result.all_done and not result.cancelled
+```
+
+If cancelled or incomplete, user sees:
+```
+Export skipped (cancelled by user)
+Run 'dich-truyen export' to manually export available chapters
 ```
 
 ## Key Files Map
