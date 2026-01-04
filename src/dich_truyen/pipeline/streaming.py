@@ -98,6 +98,8 @@ class StreamingPipeline:
         # Control flags
         self._crawl_complete = asyncio.Event()
         self._stop_requested = False
+        self._glossary_generated = False  # Track if glossary has been generated
+        self._auto_glossary = True  # Whether to auto-generate glossary
     
     async def run(
         self,
@@ -179,14 +181,19 @@ class StreamingPipeline:
         # Setup translation engine (this also translates book metadata)
         console.print(f"\n[dim]Setting up translation engine...[/dim]")
         
-        # Check if raw files exist for glossary generation
+        # Check if raw files already exist for glossary generation
         raw_dir = self.book_dir / "raw"
         has_raw_files = raw_dir.exists() and any(raw_dir.glob("*.txt"))
+        
+        # Save auto_glossary setting - if no raw files yet but we're crawling,
+        # we'll generate glossary after crawl completes
+        self._auto_glossary = auto_glossary
+        self._glossary_generated = has_raw_files  # Already generated if raw files existed
         
         self.engine = await setup_translation(
             book_dir=self.book_dir,
             style_name=style_name,
-            auto_glossary=auto_glossary and has_raw_files,  # Generate if raw files exist
+            auto_glossary=auto_glossary and has_raw_files,  # Only generate NOW if raw files exist
         )
         self.glossary = self.engine.glossary
         
@@ -422,6 +429,9 @@ class StreamingPipeline:
             if chapter.status == ChapterStatus.TRANSLATED:
                 continue
             
+            # Generate glossary if needed (first worker to reach this generates)
+            await self._generate_glossary_if_needed()
+            
             try:
                 # Find source file
                 source_files = list(raw_dir.glob(f"{chapter.index:04d}_*.txt"))
@@ -507,3 +517,83 @@ class StreamingPipeline:
         except Exception:
             # Non-blocking, just skip progressive glossary on error
             pass
+    
+    async def _generate_glossary_if_needed(self) -> None:
+        """Generate glossary from raw files if not already done.
+        
+        Called by first translation worker after crawl completes.
+        Thread-safe - only one worker will generate.
+        """
+        from dich_truyen.translator.glossary import generate_glossary_from_samples, Glossary
+        
+        # Quick check without lock
+        if self._glossary_generated or not self._auto_glossary:
+            return
+        
+        async with self._glossary_lock:
+            # Double-check after acquiring lock
+            if self._glossary_generated:
+                return
+            
+            # Mark as generated to prevent other workers from trying
+            self._glossary_generated = True
+            
+            # Check if glossary already has entries
+            if self.glossary and len(self.glossary) > 0:
+                console.print(f"[dim]  Glossary already has {len(self.glossary)} entries[/dim]")
+                return
+            
+            # Check for raw files
+            raw_dir = self.book_dir / "raw"
+            if not raw_dir.exists():
+                return
+            
+            all_files = sorted(raw_dir.glob("*.txt"))
+            if not all_files:
+                return
+            
+            console.print("[blue]Generating glossary from crawled chapters...[/blue]")
+            
+            # Get config values
+            config = get_config().translation
+            sample_chapter_count = config.glossary_sample_chapters
+            sample_size = config.glossary_sample_size
+            random_sample = config.glossary_random_sample
+            min_entries = config.glossary_min_entries
+            max_entries = config.glossary_max_entries
+            
+            # Sample from available files
+            import random
+            if len(all_files) > sample_chapter_count:
+                if random_sample:
+                    sample_files = random.sample(all_files, sample_chapter_count)
+                else:
+                    sample_files = all_files[:sample_chapter_count]
+            else:
+                sample_files = all_files
+            
+            # Read samples
+            samples = []
+            for f in sample_files:
+                try:
+                    content = f.read_text(encoding="utf-8")
+                    samples.append(content[:sample_size])
+                except Exception:
+                    pass
+            
+            if samples:
+                # Create glossary if needed
+                if not self.glossary:
+                    self.glossary = Glossary.load_or_create(self.book_dir)
+                    self.engine.glossary = self.glossary
+                
+                # Generate
+                self.glossary = await generate_glossary_from_samples(
+                    samples,
+                    self.glossary,
+                    min_entries=min_entries,
+                    max_entries=max_entries,
+                )
+                self.glossary.save(self.book_dir)
+                self.engine.glossary = self.glossary
+                console.print(f"[green]Generated {len(self.glossary)} glossary entries[/green]")
