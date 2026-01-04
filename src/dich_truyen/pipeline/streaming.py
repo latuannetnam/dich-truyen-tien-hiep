@@ -285,7 +285,7 @@ class StreamingPipeline:
                 name="pre-queue"
             ))
         
-        # Run with simple periodic status updates (most compatible)
+        # Run with table-style progress updates
         try:
             last_print_time = 0
             
@@ -301,22 +301,39 @@ class StreamingPipeline:
                         trans_total = len(to_crawl) + len(to_translate)
                         trans_pct = int(100 * self.stats.chapters_translated / trans_total) if trans_total else 100
                         
-                        # Summary line
-                        summary = f"[bold]Crawl: {self.stats.chapters_crawled}/{len(to_crawl)} ({crawl_pct}%)[/bold] | "
-                        summary += f"[bold]Translate: {self.stats.chapters_translated}/{trans_total} ({trans_pct}%)[/bold]"
+                        # Create table with columns: Crawl | Worker 1 | Worker 2 | Worker 3
+                        from rich.box import SIMPLE
+                        table = Table(show_header=True, header_style="bold", box=SIMPLE, padding=(0, 1))
+                        table.add_column("Crawl", style="cyan", width=25)
+                        for wid in range(1, self.num_workers + 1):
+                            table.add_column(f"Worker {wid}", style="green", width=30)
+                        
+                        # Build status for each column
+                        crawl_status = f"{self.stats.chapters_crawled}/{len(to_crawl)} ({crawl_pct}%)"
+                        if self.stats.crawl_status and crawl_pct < 100:
+                            crawl_status += f"\n{self.stats.crawl_status}"
+                        else:
+                            crawl_status += "\n[dim]done[/dim]" if crawl_pct == 100 else ""
+                        
+                        worker_statuses = []
+                        for wid in range(1, self.num_workers + 1):
+                            status = self.stats.worker_status.get(wid, "idle")
+                            if status == "idle":
+                                worker_statuses.append("[dim]idle[/dim]")
+                            elif "done" in status:
+                                worker_statuses.append(f"[dim]{status}[/dim]")
+                            else:
+                                worker_statuses.append(status)
+                        
+                        # Add the row
+                        table.add_row(crawl_status, *worker_statuses)
+                        
+                        # Print summary + table
+                        summary = f"[bold]Translate: {self.stats.chapters_translated}/{trans_total} ({trans_pct}%)[/bold]"
                         if self.stats.translate_errors:
                             summary += f" | [red]Err: {self.stats.translate_errors}[/red]"
                         console.print(summary)
-                        
-                        # Crawl detail (if crawling)
-                        if self.stats.crawl_status and crawl_pct < 100:
-                            console.print(f"  [cyan]↓ Downloading:[/cyan] {self.stats.crawl_status}")
-                        
-                        # Worker details
-                        for wid in range(1, self.num_workers + 1):
-                            status = self.stats.worker_status.get(wid, "idle")
-                            if status != "idle" and status != "done":
-                                console.print(f"  [green]⚡ Worker {wid}:[/green] {status}")
+                        console.print(table)
                     
                     await asyncio.sleep(0.5)
             
