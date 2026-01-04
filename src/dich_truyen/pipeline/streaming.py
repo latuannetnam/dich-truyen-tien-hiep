@@ -54,6 +54,10 @@ class PipelineStats:
     worker_status: dict = field(default_factory=dict)
     # Crawl status: "Ch.5: 第五章..."
     crawl_status: str = ""
+    # General status message (shown in table footer)
+    status_message: str = ""
+    # Glossary count
+    glossary_count: int = 0
 
 
 class StreamingPipeline:
@@ -301,69 +305,80 @@ class StreamingPipeline:
                 name="poison-pills"
             ))
         
-        # Run with table-style progress updates
+        # Run with Live table display (in-place updates)
+        from rich.live import Live
+        from rich.box import SIMPLE
+        
+        def build_status_table():
+            """Build the current status table."""
+            crawl_pct = int(100 * self.stats.chapters_crawled / len(to_crawl)) if to_crawl else 100
+            trans_total = len(to_crawl) + len(to_translate)
+            trans_pct = int(100 * self.stats.chapters_translated / trans_total) if trans_total else 100
+            
+            # Build table title with translate progress
+            title = f"[bold]Translate: {self.stats.chapters_translated}/{trans_total} ({trans_pct}%)[/bold]"
+            if self.stats.translate_errors:
+                title += f" | [red]Err: {self.stats.translate_errors}[/red]"
+            
+            # Build caption with glossary count and status message
+            caption_parts = []
+            if self.stats.glossary_count > 0:
+                caption_parts.append(f"Glossary: {self.stats.glossary_count} entries")
+            if self.stats.status_message:
+                caption_parts.append(self.stats.status_message)
+            caption = " | ".join(caption_parts) if caption_parts else None
+            
+            # Create table with columns: Crawl | Worker 1 | Worker 2 | Worker 3
+            table = Table(title=title, caption=caption, show_header=True, header_style="bold", box=SIMPLE, padding=(0, 1))
+            table.add_column("Crawl", style="cyan", width=25)
+            for wid in range(1, self.num_workers + 1):
+                table.add_column(f"Worker {wid}", style="green", width=30)
+            
+            # Build status for each column
+            crawl_status = f"{self.stats.chapters_crawled}/{len(to_crawl)} ({crawl_pct}%)"
+            if self.stats.crawl_status and crawl_pct < 100:
+                crawl_status += f"\n{self.stats.crawl_status}"
+            else:
+                crawl_status += "\n[dim]done[/dim]" if crawl_pct == 100 else ""
+            
+            worker_statuses = []
+            for wid in range(1, self.num_workers + 1):
+                status = self.stats.worker_status.get(wid, "idle")
+                if status == "idle":
+                    worker_statuses.append("[dim]idle[/dim]")
+                elif "done" in status:
+                    worker_statuses.append(f"[dim]{status}[/dim]")
+                else:
+                    worker_statuses.append(status)
+            
+            # Add the row
+            table.add_row(crawl_status, *worker_statuses)
+            
+            return table
+        
         try:
-            last_print_time = 0
-            
-            async def print_status():
-                nonlocal last_print_time
-                import time
-                while not self._stop_requested:
-                    current_time = time.time()
-                    # Print status every 3 seconds
-                    if current_time - last_print_time >= 3:
-                        last_print_time = current_time
-                        crawl_pct = int(100 * self.stats.chapters_crawled / len(to_crawl)) if to_crawl else 100
-                        trans_total = len(to_crawl) + len(to_translate)
-                        trans_pct = int(100 * self.stats.chapters_translated / trans_total) if trans_total else 100
-                        
-                        # Create table with columns: Crawl | Worker 1 | Worker 2 | Worker 3
-                        from rich.box import SIMPLE
-                        table = Table(show_header=True, header_style="bold", box=SIMPLE, padding=(0, 1))
-                        table.add_column("Crawl", style="cyan", width=25)
-                        for wid in range(1, self.num_workers + 1):
-                            table.add_column(f"Worker {wid}", style="green", width=30)
-                        
-                        # Build status for each column
-                        crawl_status = f"{self.stats.chapters_crawled}/{len(to_crawl)} ({crawl_pct}%)"
-                        if self.stats.crawl_status and crawl_pct < 100:
-                            crawl_status += f"\n{self.stats.crawl_status}"
-                        else:
-                            crawl_status += "\n[dim]done[/dim]" if crawl_pct == 100 else ""
-                        
-                        worker_statuses = []
-                        for wid in range(1, self.num_workers + 1):
-                            status = self.stats.worker_status.get(wid, "idle")
-                            if status == "idle":
-                                worker_statuses.append("[dim]idle[/dim]")
-                            elif "done" in status:
-                                worker_statuses.append(f"[dim]{status}[/dim]")
-                            else:
-                                worker_statuses.append(status)
-                        
-                        # Add the row
-                        table.add_row(crawl_status, *worker_statuses)
-                        
-                        # Print summary + table
-                        summary = f"[bold]Translate: {self.stats.chapters_translated}/{trans_total} ({trans_pct}%)[/bold]"
-                        if self.stats.translate_errors:
-                            summary += f" | [red]Err: {self.stats.translate_errors}[/red]"
-                        console.print(summary)
-                        console.print(table)
-                    
-                    await asyncio.sleep(0.5)
-            
-            status_task = asyncio.create_task(print_status())
-            
-            # Wait for all tasks to complete
-            await asyncio.gather(*tasks)
-            
-            # Stop status updates
-            self._stop_requested = True
-            try:
-                await asyncio.wait_for(status_task, timeout=0.5)
-            except asyncio.TimeoutError:
-                status_task.cancel()
+            with Live(build_status_table(), console=console, refresh_per_second=0.5, transient=True) as live:
+                async def update_display():
+                    try:
+                        while not self._stop_requested:
+                            live.update(build_status_table())
+                            await asyncio.sleep(1)  # Update every 1 second
+                    except asyncio.CancelledError:
+                        pass  # Normal exit when cancelled
+                
+                update_task = asyncio.create_task(update_display())
+                
+                try:
+                    # Wait for all tasks to complete
+                    await asyncio.gather(*tasks)
+                finally:
+                    # Always stop display updates when tasks complete
+                    self._stop_requested = True
+                    update_task.cancel()
+                    try:
+                        await update_task
+                    except asyncio.CancelledError:
+                        pass
         
         except asyncio.CancelledError:
             console.print("[yellow]Pipeline cancelled[/yellow]")
@@ -606,6 +621,7 @@ class StreamingPipeline:
                     for term in new_terms:
                         self.glossary.add(term)
                     self.glossary.save(self.book_dir)
+                    self.stats.glossary_count = len(self.glossary)
         
         except Exception:
             # Non-blocking, just skip progressive glossary on error
@@ -689,4 +705,6 @@ class StreamingPipeline:
                 )
                 self.glossary.save(self.book_dir)
                 self.engine.glossary = self.glossary
-                console.print(f"[green]Generated {len(self.glossary)} glossary entries[/green]")
+                # Update stats for Live display
+                self.stats.glossary_count = len(self.glossary)
+                self.stats.status_message = "Glossary generated"
