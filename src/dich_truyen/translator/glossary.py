@@ -266,8 +266,7 @@ class Glossary:
             writer.writeheader()
             for entry in self.entries:
                 writer.writerow(entry.model_dump())
-
-        console.print(f"[green]Exported {len(self.entries)} entries to {path}[/green]")
+        # Note: console output removed - glossary count shown in Live table instead
 
     @classmethod
     def from_csv(cls, path: Path) -> "Glossary":
