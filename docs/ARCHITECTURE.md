@@ -507,20 +507,58 @@ progress.save(book_dir)  # Prevents data loss on interruption
 
 ## Progress Display
 
-### Parallel Translation Indicator
+### Live Table (In-Place Updates)
+
+The pipeline uses Rich's `Live` display to show a table that updates **in place** without scrolling:
 
 ```
-Ch.1: 第一章 惊蛰... translating [1,2,3] [0/6] ━━━━━━━━━━━   0%
-                              ↑
-                     Active parallel chunks
-
-Ch.1: 第一章 惊蛰... [done] [6/6] ━━━━━━━━━━━━━━━━━━━━━━━━ 100%
+                     Translate: 5/11 (45%)
+ Crawl                      Worker 1                         Worker 2                         Worker 3                       
+ ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 8/10 (80%)                 Ch.3: 第3章... 1/2 [1]            Ch.4: 第4章... 0/2               Ch.5: 第5章... 1/2 [1]         
+ Ch.9: 第九章...                                              translating [1,2]                                               
+                                     Glossary: 85 entries | Glossary generated
 ```
 
-The progress bar:
-1. Pre-calculates total chunks across all chapters
-2. Shows active parallel chunks (e.g., `translating [1,2,3]`)
-3. Advances by 1 after each chunk completes
+### Key Techniques
+
+1. **Rich `Live` Context Manager**
+   ```python
+   from rich.live import Live
+   
+   with Live(build_table(), console=console, refresh_per_second=0.5, transient=True) as live:
+       async def update_display():
+           while not stop_requested:
+               live.update(build_table())  # Rebuild table with current stats
+               await asyncio.sleep(1)
+   ```
+
+2. **Transient Mode**: `transient=True` makes the Live display disappear when complete, leaving clean output.
+
+3. **Table Title for Progress**: Translate progress shown as table title (updates in place):
+   ```python
+   table = Table(title=f"Translate: {translated}/{total} ({pct}%)")
+   ```
+
+4. **Table Caption for Status**: Glossary count and status messages shown in caption:
+   ```python
+   table = Table(caption="Glossary: 85 entries | Glossary generated")
+   ```
+
+5. **Avoid Console Prints During Live**: Any `console.print()` during Live display causes scrolling. Instead:
+   - Store status in `PipelineStats.status_message` and `PipelineStats.glossary_count`
+   - Display in table caption, which updates in place
+
+### Worker Status Format
+
+Each worker column shows:
+```
+Ch.3: 第3章 领取杂务（大修）... 1/2 [1]
+       ↑                       ↑    ↑
+   Chapter title          Done/Total  Active chunk
+```
+
+Status values: `idle` → `translating [1,2]` → `1/2 [1]` → `done`
 
 ---
 

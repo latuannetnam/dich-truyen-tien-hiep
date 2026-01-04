@@ -4,6 +4,13 @@ trigger: always_on
 
 # Development Rules
 
+> **Note:** This file is gitignored. Use PowerShell to update it:
+> `powershell
+> $content = Get-Content ".agent\rules\dev.md" -Raw
+> # ... modify $content ...
+> Set-Content ".agent\rules\dev.md" $content -NoNewline
+> `
+
 Always use uv for project management and unit testing.
 
 ## App Architecture Quick Reference
@@ -62,5 +69,23 @@ dich-truyen
 | `PIPELINE_*` | Worker count, queue size |
 | `CALIBRE_*` | Calibre executable path |
 
+
+### Live Table Progress (Rich)
+
+For in-place updating progress displays:
+```python
+from rich.live import Live
+from rich.table import Table
+
+with Live(table, console=console, transient=True) as live:
+    while running:
+        live.update(build_new_table())  # Rebuild table with current stats
+```
+
+**Key rules:**
+- Use `transient=True` for clean output when done
+- Put progress in table `title`, status in `caption`
+- **NO `console.print()` inside Live** - causes scrolling
+- Store status in `PipelineStats.status_message` instead
 ### Full Architecture
 See `docs/ARCHITECTURE.md` for detailed diagrams.
