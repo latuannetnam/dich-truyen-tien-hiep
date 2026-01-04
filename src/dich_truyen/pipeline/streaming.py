@@ -277,12 +277,27 @@ class StreamingPipeline:
             for chapter in to_translate:
                 await self.queue.put(chapter)
                 self.stats.chapters_in_queue += 1
+            
+            # If no crawler running, we need to send poison pills after pre-queuing
+            # Otherwise, the crawler's finally block will send them
+            if not to_crawl:
+                for _ in range(self.num_workers):
+                    await self.queue.put(None)  # Poison pill
         
         # Start pre-queuing as a task
         if to_translate:
             tasks.append(asyncio.create_task(
                 pre_queue_chapters(),
                 name="pre-queue"
+            ))
+        elif not to_crawl:
+            # No chapters to crawl or translate, just send poison pills
+            async def send_poison_pills():
+                for _ in range(self.num_workers):
+                    await self.queue.put(None)
+            tasks.append(asyncio.create_task(
+                send_poison_pills(),
+                name="poison-pills"
             ))
         
         # Run with table-style progress updates
