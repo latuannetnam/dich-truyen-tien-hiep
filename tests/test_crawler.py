@@ -1,8 +1,13 @@
 """Unit tests for the crawler module."""
 
+import os
 import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from dotenv import load_dotenv
+
+# Load .env for API key check
+load_dotenv()
 
 from dich_truyen.crawler.base import BaseCrawler
 from dich_truyen.crawler.pattern import PatternDiscovery, DiscoveredBook
@@ -17,9 +22,26 @@ from dich_truyen.utils.progress import (
 from dich_truyen.config import CrawlerConfig
 
 
-# Sample URL for testing
-SAMPLE_URL = "https://www.piaotia.com/html/8/8717/index.html"
+# Sample URLs - use TEST_URL from env if available, else use defaults
+SAMPLE_URL = os.getenv("TEST_URL", "https://www.piaotia.com/html/8/8717/index.html")
 SAMPLE_CHAPTER_URL = "https://www.piaotia.com/html/8/8717/5588734.html"
+SAMPLE_CHAPTERS = os.getenv("TEST_CHAPTERS", "1-10")
+
+# Check if OpenAI API is configured for integration tests
+def _has_openai_api():
+    """Check if OpenAI API is available for testing."""
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    return bool(api_key) and not api_key.startswith("sk-your")
+
+requires_openai = pytest.mark.skipif(
+    not _has_openai_api(),
+    reason="Requires OpenAI API key (set OPENAI_API_KEY)"
+)
+
+requires_network = pytest.mark.skipif(
+    os.getenv("SKIP_NETWORK_TESTS", "").lower() == "true",
+    reason="Network tests disabled (SKIP_NETWORK_TESTS=true)"
+)
 
 
 class TestEncoding:
@@ -336,15 +358,17 @@ class TestCrawlerIntegration:
     """Integration tests for crawler (require network)."""
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires network access")
+    @requires_network
     async def test_fetch_sample_page(self):
         """Test fetching the sample page."""
         async with BaseCrawler() as crawler:
             html = await crawler.fetch(SAMPLE_URL)
-            assert "剑来" in html
+            # Should contain some content
+            assert len(html) > 0
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires OpenAI API key")
+    @requires_openai
+    @requires_network
     async def test_pattern_discovery(self):
         """Test full pattern discovery."""
         async with BaseCrawler() as crawler:

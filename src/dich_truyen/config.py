@@ -69,6 +69,16 @@ class ExportConfig(BaseSettings):
     fast_mode: bool = Field(default=True, description="Use direct EPUB assembly for speed")
 
 
+class PipelineConfig(BaseSettings):
+    """Streaming pipeline configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="PIPELINE_")
+
+    translator_workers: int = Field(default=3, description="Number of parallel translation workers")
+    queue_size: int = Field(default=10, description="Max chapters buffered between crawl and translate")
+    crawl_delay_ms: int = Field(default=1000, description="Delay between chapter downloads in ms")
+
+
 class AppConfig(BaseSettings):
     """Main application configuration."""
 
@@ -83,6 +93,7 @@ class AppConfig(BaseSettings):
     translation: TranslationConfig = Field(default_factory=TranslationConfig)
     calibre: CalibreConfig = Field(default_factory=CalibreConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
+    pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
 
     @classmethod
     def load(cls, env_file: Optional[Path] = None) -> "AppConfig":

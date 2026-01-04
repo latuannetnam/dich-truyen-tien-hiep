@@ -1,13 +1,32 @@
 """Unit tests for the exporter module."""
 
+import os
+import shutil
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+from dotenv import load_dotenv
+
+# Load .env for configuration
+load_dotenv()
 
 from dich_truyen.exporter.calibre import CalibreExporter, ExportResult, export_book
 from dich_truyen.formatter.metadata import BookMetadataManager
 from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
 from dich_truyen.config import CalibreConfig
+
+
+# Check if Calibre is available for integration tests
+def _has_calibre():
+    """Check if Calibre ebook-convert is available."""
+    calibre_path = os.getenv("CALIBRE_PATH", "ebook-convert")
+    # Check if it's in PATH or explicit path exists
+    return shutil.which(calibre_path) is not None or Path(calibre_path).exists()
+
+requires_calibre = pytest.mark.skipif(
+    not _has_calibre(),
+    reason="Requires Calibre installed (set CALIBRE_PATH)"
+)
 
 
 class TestCalibreExporter:
@@ -196,27 +215,33 @@ class TestCalibeFinding:
 class TestExportIntegration:
     """Integration tests for export (require Calibre)."""
 
-    @pytest.mark.skip(reason="Requires Calibre installed")
-    def test_export_to_epub(self, tmp_path):
+    @requires_calibre
+    @pytest.mark.asyncio
+    async def test_export_to_epub(self, tmp_path):
         """Test actual export to EPUB."""
         book_dir = tmp_path / "test-book"
         book_dir.mkdir()
-        (book_dir / "formatted").mkdir()
+        (book_dir / "translated").mkdir()
         (book_dir / "output").mkdir()
 
-        # Create test HTML
-        (book_dir / "formatted" / "book.html").write_text(
-            """<!DOCTYPE html>
-<html><head><title>Test</title></head>
-<body><h1>Test Book</h1><p>Content</p></body>
-</html>""",
+        # Create test translated chapter
+        (book_dir / "translated" / "1.txt").write_text(
+            "# Chương 1: Khởi Đầu\n\nNội dung chương 1.",
             encoding="utf-8",
         )
 
         # Create book.json
-        progress = BookProgress(url="http://example.com", title="Test")
+        progress = BookProgress(
+            url="http://example.com",
+            title="Test Book",
+            title_vi="Sách Thử Nghiệm",
+        )
+        progress.chapters.append(
+            Chapter(index=1, id="1", url="http://example.com/1", title_cn="第一章", title_vi="Chương 1", status=ChapterStatus.TRANSLATED)
+        )
         progress.save(book_dir)
 
-        result = export_book(book_dir, "epub")
-        assert result.success
-        assert (book_dir / "output" / "book.epub").exists()
+        result = await export_book(book_dir, "epub")
+        assert result.success, f"Export failed: {result.error_message}"
+        assert Path(result.output_path).exists(), f"Output path does not exist: {result.output_path}"
+

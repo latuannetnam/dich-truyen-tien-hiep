@@ -213,7 +213,8 @@ def export(
 
 
 @cli.command()
-@click.option("--url", required=True, help="Book index page URL")
+@click.option("--url", help="Book index page URL (required for new books)")
+@click.option("--book-dir", type=click.Path(), help="Existing book directory")
 @click.option("--style", default="tien_hiep", help="Translation style template")
 @click.option(
     "--format",
@@ -223,81 +224,88 @@ def export(
     help="Output format",
 )
 @click.option("--chapters", help="Chapter range (e.g., 1-100)")
-@click.option("--book-dir", type=click.Path(), help="Book directory")
-@click.option("--force", is_flag=True, help="Force re-process all steps")
+@click.option("--workers", default=3, type=int, help="Number of translation workers")
+@click.option("--skip-export", is_flag=True, help="Skip export phase")
+@click.option("--force", is_flag=True, help="Force re-process all chapters")
 @click.pass_context
 def pipeline(
     ctx,
-    url: str,
+    url: Optional[str],
+    book_dir: Optional[str],
     style: str,
     output_format: str,
     chapters: Optional[str],
-    book_dir: Optional[str],
+    workers: int,
+    skip_export: bool,
     force: bool,
 ) -> None:
-    """Run full pipeline: crawl → translate → export.
-
-    Complete end-to-end processing of a Chinese novel.
+    """Run full pipeline: crawl + translate (concurrent) → export.
+    
+    Uses streaming architecture for concurrent crawl/translate.
+    Supports resume from any interruption point.
+    
+    Examples:
+    
+        # New book
+        dich-truyen pipeline --url "https://..."
+        
+        # Resume existing book  
+        dich-truyen pipeline --book-dir books/my-book
+        
+        # Just crawl + translate, no export
+        dich-truyen pipeline --url "https://..." --skip-export
     """
     from dich_truyen.config import get_config
-    from dich_truyen.crawler.downloader import ChapterDownloader, create_book_directory
+    from dich_truyen.crawler.downloader import create_book_directory
     from dich_truyen.exporter.calibre import export_book
-    from dich_truyen.translator.engine import setup_translation
+    from dich_truyen.pipeline.streaming import StreamingPipeline
+
+    # Validate inputs
+    if not url and not book_dir:
+        console.print("[red]Error: Either --url or --book-dir is required[/red]")
+        raise SystemExit(1)
 
     async def run():
-        # Phase 1: Crawl
-        console.print("\n[bold blue]═══ Phase 1: Crawling ═══[/bold blue]")
-        
+        # Determine book directory
         if book_dir:
             target_dir = Path(book_dir)
+            if not target_dir.exists():
+                console.print(f"[red]Error: Directory not found: {target_dir}[/red]")
+                raise SystemExit(1)
         else:
             target_dir = await create_book_directory(url, get_config().books_dir)
-
-        console.print(f"Book directory: {target_dir}")
-
-        downloader = ChapterDownloader(target_dir)
-        await downloader.initialize_book(url)
-        crawl_result = await downloader.download_chapters(chapters, resume=not force)
-
-        if crawl_result.failed > 0:
-            console.print(f"[yellow]Warning: {crawl_result.failed} chapters failed to download[/yellow]")
-
-        # Phase 2: Translate
-        console.print("\n[bold blue]═══ Phase 2: Translating ═══[/bold blue]")
         
-        engine = await setup_translation(
+        # Run streaming pipeline (concurrent crawl + translate)
+        pipeline_obj = StreamingPipeline(translator_workers=workers)
+        result = await pipeline_obj.run(
             book_dir=target_dir,
+            url=url,
+            chapters_spec=chapters,
             style_name=style,
             auto_glossary=True,
+            force=force,
         )
-
-        translate_result = await engine.translate_book(
-            book_dir=target_dir,
-            chapters_spec=chapters,
-            resume=not force,
-        )
-
-        if translate_result.failed > 0:
-            console.print(f"[yellow]Warning: {translate_result.failed} chapters failed to translate[/yellow]")
-
-        # Phase 3: Export (direct EPUB assembly)
-        console.print("\n[bold blue]═══ Phase 3: Exporting ═══[/bold blue]")
         
-        export_result = await export_book(
-            book_dir=target_dir,
-            output_format=output_format,
-        )
-
-        if not export_result.success:
-            console.print(f"[red]Export failed: {export_result.error_message}[/red]")
-            raise SystemExit(1)
-
-        # Summary
-        console.print("\n[bold green]═══ Pipeline Complete! ═══[/bold green]")
-        console.print(f"  Book: {target_dir}")
-        console.print(f"  Chapters: {crawl_result.downloaded}")
-        console.print(f"  Translated: {translate_result.translated}")
-        console.print(f"  Output: {export_result.output_path}")
+        # Check for errors
+        if result.failed_crawl > 0 or result.failed_translate > 0:
+            console.print(f"[yellow]Warning: {result.failed_crawl} crawl errors, {result.failed_translate} translate errors[/yellow]")
+        
+        # Export phase
+        if not skip_export and result.translated > 0:
+            console.print("\n[bold blue]═══ Exporting ═══[/bold blue]")
+            
+            export_result = await export_book(
+                book_dir=target_dir,
+                output_format=output_format,
+            )
+            
+            if not export_result.success:
+                console.print(f"[red]Export failed: {export_result.error_message}[/red]")
+                raise SystemExit(1)
+            
+            console.print(f"[green]✓ Exported: {export_result.output_path}[/green]")
+        elif skip_export:
+            console.print("\n[dim]Export skipped (--skip-export)[/dim]")
 
     asyncio.run(run())
 

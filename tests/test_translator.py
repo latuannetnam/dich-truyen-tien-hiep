@@ -1,8 +1,13 @@
 """Unit tests for the translation module."""
 
+import os
 import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from dotenv import load_dotenv
+
+# Load .env for API key check
+load_dotenv()
 
 from dich_truyen.translator.glossary import Glossary, GlossaryEntry
 from dich_truyen.translator.style import (
@@ -15,6 +20,18 @@ from dich_truyen.translator.style import (
 from dich_truyen.translator.engine import TranslationEngine
 from dich_truyen.translator.llm import LLMClient
 from dich_truyen.config import LLMConfig, TranslationConfig
+
+# Check if OpenAI API is configured for integration tests
+def _has_openai_api():
+    """Check if OpenAI API is available for testing."""
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    # Skip if no key or placeholder key
+    return bool(api_key) and not api_key.startswith("sk-your")
+
+requires_openai = pytest.mark.skipif(
+    not _has_openai_api(),
+    reason="Requires OpenAI API key (set OPENAI_API_KEY)"
+)
 
 
 class TestGlossaryEntry:
@@ -361,7 +378,7 @@ class TestTranslationIntegration:
     """Integration tests for translation (require OpenAI API)."""
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires OpenAI API key")
+    @requires_openai
     async def test_translate_chunk(self):
         """Test translating a single chunk."""
         engine = TranslationEngine(
@@ -375,7 +392,7 @@ class TestTranslationIntegration:
         assert any(c in result for c in "àáảãạăắằẳẵặâấầẩẫậ")
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires OpenAI API key")
+    @requires_openai
     async def test_generate_glossary(self):
         """Test generating glossary from samples."""
         from dich_truyen.translator.glossary import generate_glossary_from_samples

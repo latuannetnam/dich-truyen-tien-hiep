@@ -1,0 +1,509 @@
+"""Streaming pipeline for concurrent crawl + translate with resume support."""
+
+import asyncio
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional, TYPE_CHECKING
+
+from pydantic import BaseModel
+from rich.console import Console
+from rich.live import Live
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TaskProgressColumn
+from rich.table import Table
+
+from dich_truyen.config import PipelineConfig, get_config
+from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
+
+if TYPE_CHECKING:
+    from dich_truyen.translator.engine import TranslationEngine
+    from dich_truyen.translator.glossary import Glossary, GlossaryEntry
+    from dich_truyen.crawler.downloader import ChapterDownloader
+
+console = Console()
+
+
+class PipelineResult(BaseModel):
+    """Result of streaming pipeline execution."""
+    
+    total_chapters: int = 0
+    crawled: int = 0
+    translated: int = 0
+    skipped_crawl: int = 0
+    skipped_translate: int = 0
+    failed_crawl: int = 0
+    failed_translate: int = 0
+    errors: list[str] = []
+
+
+@dataclass
+class PipelineStats:
+    """Mutable stats for progress tracking."""
+    
+    total_chapters: int = 0
+    chapters_crawled: int = 0
+    chapters_translated: int = 0
+    chunks_translated: int = 0
+    total_chunks: int = 0
+    chapters_in_queue: int = 0
+    crawl_errors: int = 0
+    translate_errors: int = 0
+    errors: list[str] = field(default_factory=list)
+    # Worker status tracking: {worker_id: "Ch.1: [1,2,3]"}
+    worker_status: dict = field(default_factory=dict)
+
+
+class StreamingPipeline:
+    """Concurrent crawl + translate pipeline with resume support.
+    
+    Uses producer-consumer pattern:
+    - Crawler (producer): Downloads chapters and puts them in queue
+    - Translators (consumers): Take chapters from queue and translate
+    
+    Thread safety:
+    - _progress_lock: Protects BookProgress updates
+    - _glossary_lock: Protects Glossary modifications
+    """
+    
+    def __init__(
+        self,
+        config: Optional[PipelineConfig] = None,
+        translator_workers: Optional[int] = None,
+    ):
+        """Initialize the streaming pipeline.
+        
+        Args:
+            config: Pipeline configuration
+            translator_workers: Override number of translator workers
+        """
+        self.config = config or get_config().pipeline
+        self.num_workers = translator_workers or self.config.translator_workers
+        
+        # Shared state
+        self.queue: asyncio.Queue[Chapter | None] = asyncio.Queue(
+            maxsize=self.config.queue_size
+        )
+        self.progress: Optional[BookProgress] = None
+        self.book_dir: Optional[Path] = None
+        self.stats = PipelineStats()
+        
+        # Thread safety locks
+        self._progress_lock = asyncio.Lock()
+        self._glossary_lock = asyncio.Lock()
+        
+        # Components (set during run)
+        self.downloader: Optional["ChapterDownloader"] = None
+        self.engine: Optional["TranslationEngine"] = None
+        self.glossary: Optional["Glossary"] = None
+        
+        # Control flags
+        self._crawl_complete = asyncio.Event()
+        self._stop_requested = False
+    
+    async def run(
+        self,
+        book_dir: Path,
+        url: Optional[str] = None,
+        chapters_spec: Optional[str] = None,
+        style_name: str = "tien_hiep",
+        auto_glossary: bool = True,
+        force: bool = False,
+    ) -> PipelineResult:
+        """Run the streaming pipeline.
+        
+        Args:
+            book_dir: Book directory path
+            url: Book index URL (required for new books)
+            chapters_spec: Optional chapter range (e.g., "1-100")
+            style_name: Translation style name
+            auto_glossary: Whether to auto-generate glossary
+            force: Force re-process all chapters
+            
+        Returns:
+            PipelineResult with statistics
+        """
+        from dich_truyen.crawler.downloader import ChapterDownloader
+        from dich_truyen.translator.engine import setup_translation
+        from dich_truyen.utils.progress import parse_chapter_range
+        
+        self.book_dir = Path(book_dir)
+        self.book_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize or load book progress
+        if url:
+            self.downloader = ChapterDownloader(self.book_dir)
+            self.progress = await self.downloader.initialize_book(url)
+        else:
+            self.progress = BookProgress.load(self.book_dir)
+            if not self.progress:
+                raise ValueError("No book.json found. Provide --url for new books.")
+            self.downloader = ChapterDownloader(self.book_dir)
+            self.downloader.progress = self.progress
+        
+        # Parse chapter range
+        all_chapters = self.progress.chapters
+        if chapters_spec:
+            indices = set(parse_chapter_range(chapters_spec, len(all_chapters)))
+            chapters = [c for c in all_chapters if c.index in indices]
+        else:
+            chapters = all_chapters
+        
+        self.stats.total_chapters = len(chapters)
+        
+        # Analyze state for resume
+        if force:
+            # Reset all chapters to PENDING
+            for c in chapters:
+                c.status = ChapterStatus.PENDING
+            self.progress.save(self.book_dir)
+        
+        to_crawl = [c for c in chapters if c.status == ChapterStatus.PENDING]
+        to_translate = [c for c in chapters if c.status == ChapterStatus.CRAWLED]
+        already_done = [c for c in chapters if c.status == ChapterStatus.TRANSLATED]
+        
+        console.print(f"\n[bold blue]═══ Streaming Pipeline ═══[/bold blue]")
+        console.print(f"Book: {self.progress.title} ({self.progress.title_vi or 'translating...'})")
+        console.print(f"Chapters: {len(chapters)} total")
+        console.print(f"  • To crawl: {len(to_crawl)}")
+        console.print(f"  • To translate: {len(to_translate)} (already crawled)")
+        console.print(f"  • Already done: {len(already_done)}")
+        
+        # Check if anything to do
+        if not to_crawl and not to_translate:
+            console.print("[green]All chapters already completed![/green]")
+            return PipelineResult(
+                total_chapters=len(chapters),
+                skipped_crawl=len(chapters),
+                skipped_translate=len(chapters),
+            )
+        
+        # Setup translation engine (this also translates book metadata)
+        console.print(f"\n[dim]Setting up translation engine...[/dim]")
+        
+        # Check if raw files exist for glossary generation
+        raw_dir = self.book_dir / "raw"
+        has_raw_files = raw_dir.exists() and any(raw_dir.glob("*.txt"))
+        
+        self.engine = await setup_translation(
+            book_dir=self.book_dir,
+            style_name=style_name,
+            auto_glossary=auto_glossary and has_raw_files,  # Generate if raw files exist
+        )
+        self.glossary = self.engine.glossary
+        
+        # Reload progress to get translated metadata (setup_translation updates it)
+        self.progress = BookProgress.load(self.book_dir)
+        
+        # Rebuild chapter lists from reloaded progress to maintain object references
+        all_chapters = self.progress.chapters
+        if chapters_spec:
+            indices = set(parse_chapter_range(chapters_spec, len(all_chapters)))
+            chapters = [c for c in all_chapters if c.index in indices]
+        else:
+            chapters = all_chapters
+        
+        to_crawl = [c for c in chapters if c.status == ChapterStatus.PENDING]
+        to_translate = [c for c in chapters if c.status == ChapterStatus.CRAWLED]
+        
+        # Pre-queue already crawled chapters for translation
+        for chapter in to_translate:
+            await self.queue.put(chapter)
+            self.stats.chapters_in_queue += 1
+        
+        # Start concurrent execution
+        console.print(f"\n[dim]Starting {self.num_workers} translator workers...[/dim]")
+        
+        # Create tasks
+        tasks = []
+        
+        # Crawler task (only if there are chapters to crawl)
+        if to_crawl:
+            tasks.append(asyncio.create_task(
+                self._crawl_producer(to_crawl),
+                name="crawler"
+            ))
+        else:
+            # No crawling needed, signal completion
+            self._crawl_complete.set()
+        
+        # Translator tasks
+        for i in range(self.num_workers):
+            tasks.append(asyncio.create_task(
+                self._translate_consumer(i + 1),
+                name=f"translator-{i+1}"
+            ))
+        
+        # Run with progress display
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TextColumn("{task.fields[status]}"),
+                console=console,
+                transient=True,
+            ) as progress_bar:
+                crawl_task = progress_bar.add_task(
+                    "[cyan]Crawling",
+                    total=len(to_crawl) if to_crawl else 1,
+                    status="",
+                    visible=bool(to_crawl),
+                )
+                translate_task = progress_bar.add_task(
+                    "[green]Translating",
+                    total=len(to_crawl) + len(to_translate),
+                    status="",
+                )
+                
+                # Create worker status tasks
+                worker_tasks = {}
+                for i in range(self.num_workers):
+                    worker_tasks[i + 1] = progress_bar.add_task(
+                        f"[dim]Worker {i+1}",
+                        total=None,  # Indeterminate
+                        status="idle",
+                    )
+                
+                # Update progress periodically
+                async def update_progress():
+                    while not self._stop_requested:
+                        # Update crawl progress
+                        progress_bar.update(
+                            crawl_task,
+                            completed=self.stats.chapters_crawled,
+                            status=f"queue: {self.stats.chapters_in_queue}",
+                        )
+                        # Update translate progress  
+                        progress_bar.update(
+                            translate_task,
+                            completed=self.stats.chapters_translated,
+                            status=f"errors: {self.stats.translate_errors}",
+                        )
+                        # Update worker statuses
+                        for wid, task_id in worker_tasks.items():
+                            status = self.stats.worker_status.get(wid, "idle")
+                            progress_bar.update(
+                                task_id,
+                                description=f"[dim]Worker {wid}",
+                                status=status,
+                            )
+                        await asyncio.sleep(0.3)  # Faster updates for responsiveness
+                
+                progress_task = asyncio.create_task(update_progress())
+                
+                # Wait for all tasks to complete
+                await asyncio.gather(*tasks)
+                
+                # Stop progress updates
+                self._stop_requested = True
+                await progress_task
+        
+        except asyncio.CancelledError:
+            console.print("[yellow]Pipeline cancelled[/yellow]")
+            self._stop_requested = True
+            for task in tasks:
+                task.cancel()
+        
+        # Final summary
+        console.print(f"\n[bold green]═══ Pipeline Complete! ═══[/bold green]")
+        console.print(f"  Crawled: {self.stats.chapters_crawled}")
+        console.print(f"  Translated: {self.stats.chapters_translated}")
+        if self.stats.crawl_errors:
+            console.print(f"  [yellow]Crawl errors: {self.stats.crawl_errors}[/yellow]")
+        if self.stats.translate_errors:
+            console.print(f"  [yellow]Translate errors: {self.stats.translate_errors}[/yellow]")
+        
+        # Save glossary (in case progressive mode added entries)
+        if self.glossary and len(self.glossary) > 0:
+            self.glossary.save(self.book_dir)
+            console.print(f"  Glossary: {len(self.glossary)} entries saved")
+        
+        return PipelineResult(
+            total_chapters=self.stats.total_chapters,
+            crawled=self.stats.chapters_crawled,
+            translated=self.stats.chapters_translated,
+            skipped_crawl=len(already_done) + len(to_translate),
+            skipped_translate=len(already_done),
+            failed_crawl=self.stats.crawl_errors,
+            failed_translate=self.stats.translate_errors,
+            errors=self.stats.errors,
+        )
+    
+    async def _crawl_producer(self, chapters: list[Chapter]) -> None:
+        """Download chapters and put into queue.
+        
+        Args:
+            chapters: Chapters to download (PENDING status)
+        """
+        from dich_truyen.crawler.base import BaseCrawler
+        from dich_truyen.crawler.pattern import PatternDiscovery
+        from dich_truyen.crawler.downloader import slugify
+        
+        raw_dir = self.book_dir / "raw"
+        raw_dir.mkdir(exist_ok=True)
+        
+        discovery = PatternDiscovery()
+        
+        try:
+            async with BaseCrawler(self.downloader.config) as crawler:
+                for chapter in chapters:
+                    if self._stop_requested:
+                        break
+                    
+                    try:
+                        # Fetch chapter page
+                        html = await crawler.fetch(chapter.url, self.progress.encoding)
+                        
+                        # Extract content
+                        title, content = discovery.extract_chapter_content(
+                            html, self.progress.patterns
+                        )
+                        
+                        # Update title if extracted
+                        if title and not chapter.title_cn:
+                            chapter.title_cn = title
+                        
+                        # Save to file
+                        filename = f"{chapter.index:04d}_{slugify(chapter.title_cn)}.txt"
+                        filepath = raw_dir / filename
+                        
+                        with open(filepath, "w", encoding="utf-8") as f:
+                            f.write(f"# {chapter.title_cn}\n\n")
+                            f.write(content)
+                        
+                        # Update status safely
+                        await self._update_chapter_status(chapter, ChapterStatus.CRAWLED)
+                        self.stats.chapters_crawled += 1
+                        
+                        # Put in queue for translation
+                        await self.queue.put(chapter)
+                        self.stats.chapters_in_queue += 1
+                    
+                    except Exception as e:
+                        error_msg = f"Crawl chapter {chapter.index}: {str(e)}"
+                        self.stats.errors.append(error_msg)
+                        self.stats.crawl_errors += 1
+                        await self._update_chapter_status(chapter, ChapterStatus.ERROR, str(e))
+                    
+                    # Rate limiting
+                    await asyncio.sleep(self.config.crawl_delay_ms / 1000)
+        
+        finally:
+            # Signal completion to all workers
+            self._crawl_complete.set()
+            for _ in range(self.num_workers):
+                await self.queue.put(None)  # Poison pill
+    
+    async def _translate_consumer(self, worker_id: int) -> None:
+        """Take chapters from queue and translate.
+        
+        Args:
+            worker_id: Worker identifier for logging
+        """
+        translated_dir = self.book_dir / "translated"
+        translated_dir.mkdir(exist_ok=True)
+        raw_dir = self.book_dir / "raw"
+        
+        # Initialize worker status
+        self.stats.worker_status[worker_id] = "idle"
+        
+        while True:
+            # Wait for chapter from queue
+            chapter = await self.queue.get()
+            
+            # Check for poison pill
+            if chapter is None:
+                self.stats.worker_status[worker_id] = "done"
+                break
+            
+            self.stats.chapters_in_queue -= 1
+            
+            # Skip if already translated
+            if chapter.status == ChapterStatus.TRANSLATED:
+                continue
+            
+            try:
+                # Find source file
+                source_files = list(raw_dir.glob(f"{chapter.index:04d}_*.txt"))
+                if not source_files:
+                    raise FileNotFoundError(f"No raw file for chapter {chapter.index}")
+                
+                source_path = source_files[0]
+                output_path = translated_dir / f"{chapter.index}.txt"
+                
+                # Create progress callback for chunk-level updates
+                chapter_title = (chapter.title_cn or "")[:12]
+                def progress_callback(chunk_idx, total_chunks, status=""):
+                    self.stats.worker_status[worker_id] = f"Ch.{chapter.index}: {chapter_title}... {status}"
+                    # Track chunk progress only when marked as done
+                    if "done" in status.lower():
+                        self.stats.chunks_translated += 1
+                
+                # Translate chapter with progress callback
+                await self.engine.translate_chapter(source_path, output_path, progress_callback)
+                
+                # Update final status
+                self.stats.worker_status[worker_id] = f"Ch.{chapter.index}: done"
+                
+                # Translate chapter title if needed
+                if chapter.title_cn and not chapter.title_vi:
+                    chapter.title_vi = await self.engine.llm.translate_title(
+                        chapter.title_cn, "chapter"
+                    )
+                
+                # Progressive glossary (thread-safe)
+                if self.engine.config.progressive_glossary and self.glossary:
+                    await self._extract_progressive_glossary(source_path)
+                
+                # Update status safely
+                await self._update_chapter_status(chapter, ChapterStatus.TRANSLATED)
+                self.stats.chapters_translated += 1
+            
+            except Exception as e:
+                error_msg = f"Translate chapter {chapter.index}: {str(e)}"
+                self.stats.errors.append(error_msg)
+                self.stats.translate_errors += 1
+                await self._update_chapter_status(chapter, ChapterStatus.ERROR, str(e))
+    
+    async def _update_chapter_status(
+        self,
+        chapter: Chapter,
+        status: ChapterStatus,
+        error: Optional[str] = None,
+    ) -> None:
+        """Thread-safe chapter status update.
+        
+        Args:
+            chapter: Chapter to update
+            status: New status
+            error: Optional error message
+        """
+        async with self._progress_lock:
+            self.progress.update_chapter_status(chapter.index, status, error)
+            self.progress.save(self.book_dir)
+    
+    async def _extract_progressive_glossary(self, source_path: Path) -> None:
+        """Thread-safe progressive glossary extraction.
+        
+        Args:
+            source_path: Path to source chapter file
+        """
+        from dich_truyen.translator.glossary import extract_new_terms_from_chapter
+        
+        try:
+            with open(source_path, "r", encoding="utf-8") as f:
+                chapter_content = f.read()
+            
+            new_terms = await extract_new_terms_from_chapter(
+                chapter_content, self.glossary, max_new_terms=3
+            )
+            
+            if new_terms:
+                async with self._glossary_lock:
+                    for term in new_terms:
+                        self.glossary.add(term)
+                    self.glossary.save(self.book_dir)
+        
+        except Exception:
+            # Non-blocking, just skip progressive glossary on error
+            pass
