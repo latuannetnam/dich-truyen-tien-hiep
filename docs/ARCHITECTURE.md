@@ -4,22 +4,42 @@ This document explains the internal workings and architecture of the Dịch Truy
 
 ## Overview
 
-The application follows a 3-phase pipeline architecture:
+The application uses a **streaming pipeline architecture** with concurrent crawl and translation:
 
 ```
-┌─────────┐     ┌───────────┐     ┌──────────────────┐
-│  CRAWL  │────▶│ TRANSLATE │────▶│      EXPORT      │
-│         │     │           │     │                  │
-│ Download│     │  Chinese  │     │ Direct EPUB      │
-│ chapters│     │    to     │     │ assembly with    │
-│ from web│     │Vietnamese │     │ parallel writing │
-└─────────┘     └───────────┘     └──────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     StreamingPipeline                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────┐                                               │
+│  │   Crawler    │──────▶ Queue ──────▶ ┌─────────────────┐      │
+│  │  (Producer)  │                      │ Translator      │      │
+│  │              │       ┌──────────────│ Worker 1        │      │
+│  │  Download    │       │              └─────────────────┘      │
+│  │  chapters    │       │              ┌─────────────────┐      │
+│  │  one by one  │       └──────────────│ Translator      │      │
+│  └──────────────┘                      │ Worker 2        │      │
+│                                        └─────────────────┘      │
+│                                        ┌─────────────────┐      │
+│                                        │ Translator      │      │
+│                                        │ Worker 3        │      │
+│                                        └─────────────────┘      │
+│                                                                  │
+│  ═══════════════════════════════════════════════════════════    │
+│                              ▼                                   │
+│                     ┌──────────────┐                            │
+│                     │    EXPORT    │                            │
+│                     │ Direct EPUB  │                            │
+│                     │ + Calibre    │                            │
+│                     └──────────────┘                            │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Key Files Map
 
 | Phase | Key Files | Purpose |
-|-------|-----------|---------|
+|-------|-----------|------------|
+| **Pipeline** | `pipeline/streaming.py` | Concurrent crawl/translate orchestration |
 | **Crawl** | `crawler/pattern.py` | LLM pattern discovery for CSS selectors |
 | | `crawler/downloader.py` | Chapter download with resume support |
 | | `crawler/base.py` | HTTP client with retry & encoding detection |
@@ -30,10 +50,27 @@ The application follows a 3-phase pipeline architecture:
 | | `translator/term_scorer.py` | TF-IDF based glossary selection |
 | **Export** | `exporter/epub_assembler.py` | Direct EPUB assembly with parallel writing |
 | | `exporter/calibre.py` | Calibre integration for AZW3/MOBI/PDF |
-| | `formatter/metadata.py` | Book metadata handling |
-| **CLI** | `cli.py` | All CLI commands implementation |
+| **CLI** | `cli.py` | pipeline, export, glossary, style commands |
 | **Config** | `config.py` | Pydantic settings & env vars |
 | **Progress** | `utils/progress.py` | BookProgress & status data models |
+
+## CLI Commands
+
+```
+dich-truyen
+├── pipeline         # Main workflow (crawl + translate + export)
+│   ├── --crawl-only
+│   ├── --translate-only
+│   └── --skip-export
+├── export           # Standalone export
+├── glossary
+│   ├── export
+│   ├── import
+│   └── show
+└── style
+    ├── list
+    └── generate
+```
 
 ---
 

@@ -45,123 +45,136 @@ def cli(ctx, verbose: bool, quiet: bool, env_file: Optional[str]) -> None:
 
 
 # =============================================================================
-# Crawl Command
+# Pipeline Command (Main Workflow)
 # =============================================================================
 
 
 @cli.command()
-@click.option("--url", required=True, help="Book index page URL")
+@click.option("--url", help="Book index page URL (required for new books)")
+@click.option("--book-dir", type=click.Path(), help="Existing book directory")
+@click.option("--style", default="tien_hiep", help="Translation style template")
 @click.option(
-    "--book-dir",
-    type=click.Path(),
-    help="Book directory (auto-generated from URL if not specified)",
+    "--format",
+    "output_format",
+    default="azw3",
+    type=click.Choice(["epub", "azw3", "mobi", "pdf"]),
+    help="Output format",
 )
-@click.option("--chapters", help="Chapter range (e.g., 1-100 or 1,5,10-20)")
-@click.option("--encoding", help="Force encoding (auto-detect if not set)")
-@click.option("--resume/--no-resume", default=True, help="Resume interrupted download")
-@click.option("--force", is_flag=True, help="Force re-download even if already downloaded")
+@click.option("--chapters", help="Chapter range (e.g., 1-100)")
+@click.option("--workers", default=3, type=int, help="Number of translation workers")
+@click.option("--crawl-only", is_flag=True, help="Stop after crawl phase (no translation)")
+@click.option("--translate-only", is_flag=True, help="Skip crawl, only translate existing chapters")
+@click.option("--skip-export", is_flag=True, help="Skip export phase")
+@click.option("--no-glossary", is_flag=True, help="Disable auto-glossary generation")
+@click.option("--glossary", type=click.Path(exists=True), help="Import glossary from CSV before translation")
+@click.option("--force", is_flag=True, help="Force re-process all chapters")
 @click.pass_context
-def crawl(
+def pipeline(
     ctx,
-    url: str,
+    url: Optional[str],
     book_dir: Optional[str],
+    style: str,
+    output_format: str,
     chapters: Optional[str],
-    encoding: Optional[str],
-    resume: bool,
+    workers: int,
+    crawl_only: bool,
+    translate_only: bool,
+    skip_export: bool,
+    no_glossary: bool,
+    glossary: Optional[str],
     force: bool,
 ) -> None:
-    """Phase 1: Crawl chapters from website.
-
-    Downloads all chapters from a Chinese novel website.
-    Uses LLM to automatically discover chapter list structure.
+    """Run full pipeline: crawl + translate (concurrent) → export.
+    
+    Uses streaming architecture for concurrent crawl/translate.
+    Supports resume from any interruption point.
+    
+    Examples:
+    
+        # Full pipeline (crawl + translate + export)
+        dich-truyen pipeline --url "https://..."
+        
+        # Just crawl chapters (review before translation)
+        dich-truyen pipeline --url "https://..." --crawl-only
+        
+        # Translate existing book (skip crawl)
+        dich-truyen pipeline --book-dir books/my-book --translate-only
+        
+        # Use custom glossary
+        dich-truyen pipeline --book-dir books/my-book --glossary custom.csv
     """
     from dich_truyen.config import get_config
-    from dich_truyen.crawler.downloader import ChapterDownloader, create_book_directory
+    from dich_truyen.crawler.downloader import create_book_directory
+    from dich_truyen.exporter.calibre import export_book
+    from dich_truyen.pipeline.streaming import StreamingPipeline
+    from dich_truyen.translator.glossary import Glossary
+
+    # Validate inputs
+    if not url and not book_dir:
+        console.print("[red]Error: Either --url or --book-dir is required[/red]")
+        raise SystemExit(1)
+    
+    if crawl_only and translate_only:
+        console.print("[red]Error: Cannot use both --crawl-only and --translate-only[/red]")
+        raise SystemExit(1)
 
     async def run():
-        # Create or use specified book directory
+        # Determine book directory
         if book_dir:
             target_dir = Path(book_dir)
+            if not target_dir.exists():
+                console.print(f"[red]Error: Directory not found: {target_dir}[/red]")
+                raise SystemExit(1)
         else:
-            target_dir = await create_book_directory(
-                url, get_config().books_dir
-            )
-
-        console.print(f"[blue]Book directory: {target_dir}[/blue]")
-
-        # Initialize downloader
-        downloader = ChapterDownloader(target_dir)
-
-        # Initialize book (discover patterns, extract chapter list)
-        await downloader.initialize_book(url, encoding)
-
-        # Download chapters (force disables resume)
-        result = await downloader.download_chapters(chapters, resume=resume and not force)
-
-        if result.failed > 0:
-            console.print(f"[yellow]Warning: {result.failed} chapters failed[/yellow]")
-            for error in result.errors[:5]:
-                console.print(f"  - {error}")
-
-    asyncio.run(run())
-
-
-# =============================================================================
-# Translate Command
-# =============================================================================
-
-
-@cli.command()
-@click.option("--book-dir", required=True, type=click.Path(exists=True), help="Book directory")
-@click.option("--style", default="tien_hiep", help="Translation style template")
-@click.option("--chapters", help="Chapter range (e.g., 1-100 or 1,5,10-20)")
-@click.option("--glossary", type=click.Path(exists=True), help="Import glossary CSV")
-@click.option("--auto-glossary/--no-auto-glossary", default=True, help="Auto-generate glossary")
-@click.option("--chunk-size", type=int, help="Characters per translation chunk")
-@click.option("--resume/--no-resume", default=True, help="Resume interrupted translation")
-@click.option("--force", is_flag=True, help="Force re-translate even if already translated")
-@click.pass_context
-def translate(
-    ctx,
-    book_dir: str,
-    style: str,
-    chapters: Optional[str],
-    glossary: Optional[str],
-    auto_glossary: bool,
-    chunk_size: Optional[int],
-    resume: bool,
-    force: bool,
-) -> None:
-    """Phase 2: Translate chapters using LLM.
-
-    Translates downloaded chapters from Chinese to Vietnamese.
-    """
-    from dich_truyen.translator.engine import TranslationEngine, setup_translation
-
-    async def run():
-        # Setup translation engine
-        engine = await setup_translation(
-            book_dir=Path(book_dir),
-            style_name=style,
-            glossary_path=Path(glossary) if glossary else None,
-            auto_glossary=auto_glossary,
-        )
-
-        # Override chunk size if specified
-        if chunk_size:
-            engine.config.chunk_size = chunk_size
-
-        # Run translation (force disables resume)
-        result = await engine.translate_book(
-            book_dir=Path(book_dir),
+            target_dir = await create_book_directory(url, get_config().books_dir)
+        
+        # Import custom glossary if provided
+        if glossary:
+            console.print(f"[blue]Importing glossary from {glossary}...[/blue]")
+            imported = Glossary.from_csv(Path(glossary))
+            imported.save(target_dir)
+            console.print(f"[green]Imported {len(imported)} glossary entries[/green]")
+        
+        # Run streaming pipeline (concurrent crawl + translate)
+        pipeline_obj = StreamingPipeline(translator_workers=workers)
+        result = await pipeline_obj.run(
+            book_dir=target_dir,
+            url=url if not translate_only else None,  # Skip crawl if translate-only
             chapters_spec=chapters,
-            resume=resume and not force,
+            style_name=style,
+            auto_glossary=not no_glossary,
+            force=force,
+            crawl_only=crawl_only,
         )
-
-        if result.failed > 0:
-            console.print(f"[yellow]Warning: {result.failed} chapters failed[/yellow]")
-            for error in result.errors[:5]:
-                console.print(f"  - {error}")
+        
+        # Check for errors
+        if result.failed_crawl > 0 or result.failed_translate > 0:
+            console.print(f"[yellow]Warning: {result.failed_crawl} crawl errors, {result.failed_translate} translate errors[/yellow]")
+        
+        # Export phase (skip if crawl-only or skip-export or no translations)
+        should_export = (
+            not crawl_only 
+            and not skip_export 
+            and result.translated > 0
+        )
+        
+        if should_export:
+            console.print("\n[bold blue]═══ Exporting ═══[/bold blue]")
+            
+            export_result = await export_book(
+                book_dir=target_dir,
+                output_format=output_format,
+            )
+            
+            if not export_result.success:
+                console.print(f"[red]Export failed: {export_result.error_message}[/red]")
+                raise SystemExit(1)
+            
+            console.print(f"[green]✓ Exported: {export_result.output_path}[/green]")
+        elif crawl_only:
+            console.print("\n[dim]Translation/export skipped (--crawl-only)[/dim]")
+        elif skip_export:
+            console.print("\n[dim]Export skipped (--skip-export)[/dim]")
 
     asyncio.run(run())
 
@@ -208,109 +221,6 @@ def export(
 
 
 # =============================================================================
-# Pipeline Command
-# =============================================================================
-
-
-@cli.command()
-@click.option("--url", help="Book index page URL (required for new books)")
-@click.option("--book-dir", type=click.Path(), help="Existing book directory")
-@click.option("--style", default="tien_hiep", help="Translation style template")
-@click.option(
-    "--format",
-    "output_format",
-    default="azw3",
-    type=click.Choice(["epub", "azw3", "mobi", "pdf"]),
-    help="Output format",
-)
-@click.option("--chapters", help="Chapter range (e.g., 1-100)")
-@click.option("--workers", default=3, type=int, help="Number of translation workers")
-@click.option("--skip-export", is_flag=True, help="Skip export phase")
-@click.option("--force", is_flag=True, help="Force re-process all chapters")
-@click.pass_context
-def pipeline(
-    ctx,
-    url: Optional[str],
-    book_dir: Optional[str],
-    style: str,
-    output_format: str,
-    chapters: Optional[str],
-    workers: int,
-    skip_export: bool,
-    force: bool,
-) -> None:
-    """Run full pipeline: crawl + translate (concurrent) → export.
-    
-    Uses streaming architecture for concurrent crawl/translate.
-    Supports resume from any interruption point.
-    
-    Examples:
-    
-        # New book
-        dich-truyen pipeline --url "https://..."
-        
-        # Resume existing book  
-        dich-truyen pipeline --book-dir books/my-book
-        
-        # Just crawl + translate, no export
-        dich-truyen pipeline --url "https://..." --skip-export
-    """
-    from dich_truyen.config import get_config
-    from dich_truyen.crawler.downloader import create_book_directory
-    from dich_truyen.exporter.calibre import export_book
-    from dich_truyen.pipeline.streaming import StreamingPipeline
-
-    # Validate inputs
-    if not url and not book_dir:
-        console.print("[red]Error: Either --url or --book-dir is required[/red]")
-        raise SystemExit(1)
-
-    async def run():
-        # Determine book directory
-        if book_dir:
-            target_dir = Path(book_dir)
-            if not target_dir.exists():
-                console.print(f"[red]Error: Directory not found: {target_dir}[/red]")
-                raise SystemExit(1)
-        else:
-            target_dir = await create_book_directory(url, get_config().books_dir)
-        
-        # Run streaming pipeline (concurrent crawl + translate)
-        pipeline_obj = StreamingPipeline(translator_workers=workers)
-        result = await pipeline_obj.run(
-            book_dir=target_dir,
-            url=url,
-            chapters_spec=chapters,
-            style_name=style,
-            auto_glossary=True,
-            force=force,
-        )
-        
-        # Check for errors
-        if result.failed_crawl > 0 or result.failed_translate > 0:
-            console.print(f"[yellow]Warning: {result.failed_crawl} crawl errors, {result.failed_translate} translate errors[/yellow]")
-        
-        # Export phase
-        if not skip_export and result.translated > 0:
-            console.print("\n[bold blue]═══ Exporting ═══[/bold blue]")
-            
-            export_result = await export_book(
-                book_dir=target_dir,
-                output_format=output_format,
-            )
-            
-            if not export_result.success:
-                console.print(f"[red]Export failed: {export_result.error_message}[/red]")
-                raise SystemExit(1)
-            
-            console.print(f"[green]✓ Exported: {export_result.output_path}[/green]")
-        elif skip_export:
-            console.print("\n[dim]Export skipped (--skip-export)[/dim]")
-
-    asyncio.run(run())
-
-
-# =============================================================================
 # Glossary Commands
 # =============================================================================
 
@@ -326,15 +236,56 @@ def glossary():
 @click.option("--output", "-o", required=True, type=click.Path(), help="Output CSV path")
 def glossary_export(book_dir: str, output: str) -> None:
     """Export glossary to CSV file."""
-    console.print("[yellow]Glossary export not yet implemented[/yellow]")
+    from dich_truyen.translator.glossary import Glossary
+    
+    g = Glossary.load(Path(book_dir))
+    if not g or len(g) == 0:
+        console.print(f"[yellow]No glossary found in {book_dir}[/yellow]")
+        return
+    
+    g.to_csv(Path(output))
+    console.print(f"[green]Exported {len(g)} entries to {output}[/green]")
 
 
 @glossary.command("import")
 @click.option("--book-dir", required=True, type=click.Path(exists=True), help="Book directory")
-@click.option("--input", "-i", "input_file", required=True, type=click.Path(exists=True))
-def glossary_import(book_dir: str, input_file: str) -> None:
+@click.option("--input", "-i", "input_file", required=True, type=click.Path(exists=True), help="Input CSV file")
+@click.option("--merge/--replace", default=True, help="Merge with existing or replace")
+def glossary_import(book_dir: str, input_file: str, merge: bool) -> None:
     """Import glossary from CSV file."""
-    console.print("[yellow]Glossary import not yet implemented[/yellow]")
+    from dich_truyen.translator.glossary import Glossary
+    
+    imported = Glossary.from_csv(Path(input_file))
+    
+    if merge:
+        existing = Glossary.load_or_create(Path(book_dir))
+        for entry in imported.entries:
+            existing.add(entry)
+        existing.save(Path(book_dir))
+        console.print(f"[green]Merged {len(imported)} entries (total: {len(existing)})[/green]")
+    else:
+        imported.save(Path(book_dir))
+        console.print(f"[green]Imported {len(imported)} entries (replaced existing)[/green]")
+
+
+@glossary.command("show")
+@click.option("--book-dir", required=True, type=click.Path(exists=True), help="Book directory")
+@click.option("--limit", default=50, help="Maximum entries to show")
+def glossary_show(book_dir: str, limit: int) -> None:
+    """Display glossary contents."""
+    from dich_truyen.translator.glossary import Glossary
+    
+    g = Glossary.load(Path(book_dir))
+    if not g or len(g) == 0:
+        console.print(f"[yellow]No glossary found in {book_dir}[/yellow]")
+        return
+    
+    console.print(f"[bold]Glossary ({len(g)} entries):[/bold]")
+    for i, entry in enumerate(g.entries[:limit]):
+        console.print(f"  {entry.chinese} → {entry.vietnamese} [{entry.category}]")
+    
+    if len(g) > limit:
+        console.print(f"  [dim]... and {len(g) - limit} more[/dim]")
 
 
 # =============================================================================
@@ -351,7 +302,11 @@ def style():
 @style.command("list")
 def style_list() -> None:
     """List available style templates."""
-    styles = ["tien_hiep", "kiem_hiep", "huyen_huyen", "do_thi"]
+    from dich_truyen.translator.style import StyleManager
+    
+    manager = StyleManager()
+    styles = manager.list_available()
+    
     console.print("[bold]Available styles:[/bold]")
     for s in styles:
         console.print(f"  - {s}")

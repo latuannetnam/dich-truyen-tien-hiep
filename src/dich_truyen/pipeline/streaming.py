@@ -109,6 +109,7 @@ class StreamingPipeline:
         style_name: str = "tien_hiep",
         auto_glossary: bool = True,
         force: bool = False,
+        crawl_only: bool = False,
     ) -> PipelineResult:
         """Run the streaming pipeline.
         
@@ -119,6 +120,7 @@ class StreamingPipeline:
             style_name: Translation style name
             auto_glossary: Whether to auto-generate glossary
             force: Force re-process all chapters
+            crawl_only: Stop after crawl phase (no translation)
             
         Returns:
             PipelineResult with statistics
@@ -210,6 +212,39 @@ class StreamingPipeline:
         
         to_crawl = [c for c in chapters if c.status == ChapterStatus.PENDING]
         to_translate = [c for c in chapters if c.status == ChapterStatus.CRAWLED]
+        
+        # Handle crawl_only mode - skip translation setup and workers
+        if crawl_only:
+            console.print(f"[dim]Crawl-only mode: {len(to_crawl)} chapters to crawl[/dim]")
+            
+            if not to_crawl:
+                console.print("[green]All chapters already crawled![/green]")
+                return PipelineResult(
+                    total_chapters=len(chapters),
+                    crawled=0,
+                    translated=0,
+                    skipped_crawl=len(chapters),
+                    skipped_translate=len(chapters),
+                )
+            
+            # Just run crawler, no translation
+            self.stats.total_chapters = len(to_crawl)
+            await self._crawl_producer(to_crawl)
+            
+            console.print(f"\n[bold green]═══ Crawl Complete! ═══[/bold green]")
+            console.print(f"  Crawled: {self.stats.chapters_crawled}")
+            if self.stats.crawl_errors:
+                console.print(f"  [yellow]Errors: {self.stats.crawl_errors}[/yellow]")
+            
+            return PipelineResult(
+                total_chapters=len(chapters),
+                crawled=self.stats.chapters_crawled,
+                translated=0,
+                skipped_crawl=len(chapters) - len(to_crawl),
+                skipped_translate=len(chapters),
+                failed_crawl=self.stats.crawl_errors,
+                errors=self.stats.errors,
+            )
         
         # Pre-queue already crawled chapters for translation
         for chapter in to_translate:

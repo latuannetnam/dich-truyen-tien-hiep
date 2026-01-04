@@ -14,16 +14,17 @@ Công cụ dòng lệnh để crawl, dịch và xuất truyện Trung Quốc san
 - 📚 **Hệ Thống Glossary**: Duy trì thuật ngữ nhất quán (import/export CSV)
 - 📕 **Xuất Ebook**: Chuyển đổi sang EPUB, AZW3, MOBI, PDF qua Calibre
 - 🔄 **Hoạt Động Tiếp Tục Được**: Tiếp tục download/dịch khi bị gián đoạn
+- ⚡ **Pipeline Streaming**: Crawl và dịch đồng thời với đa worker
 
 ### Kỹ Thuật Nâng Cao
 
 | Kỹ Thuật | Mô Tả |
 |----------|-------|
-| 🎯 **Smart Dialogue Chunking** | Giữ nguyên các đoạn hội thoại trong cùng một chunk để duy trì ngữ cảnh và tính nhất quán |
-| 📈 **Progressive Glossary Building** | Tự động trích xuất thuật ngữ mới từ mỗi chương đã dịch để cải thiện chất lượng liên tục |
-| 🔍 **TF-IDF Glossary Selection** | Chọn thuật ngữ phù hợp nhất cho từng chunk dựa trên điểm relevance TF-IDF |
-| ⚡ **Direct EPUB Assembly** | Tạo EPUB trực tiếp với parallel writing, nhanh hơn 10-20x so với phương pháp HTML cũ |
-| 🚀 **Parallel Translation** | Dịch nhiều chunk đồng thời với context overlap để duy trì tính mạch lạc |
+| 🎯 **Smart Dialogue Chunking** | Giữ nguyên các đoạn hội thoại trong cùng một chunk để duy trì ngữ cảnh |
+| 📈 **Progressive Glossary Building** | Tự động trích xuất thuật ngữ mới từ mỗi chương đã dịch |
+| 🔍 **TF-IDF Glossary Selection** | Chọn thuật ngữ phù hợp nhất cho từng chunk dựa trên điểm TF-IDF |
+| ⚡ **Direct EPUB Assembly** | Tạo EPUB trực tiếp với parallel writing, nhanh hơn 10-20x |
+| 🚀 **Concurrent Pipeline** | Crawl và dịch song song với nhiều worker |
 
 ## Cài Đặt
 
@@ -34,9 +35,6 @@ cd dich-truyen-tien-hiep
 
 # Cài đặt với uv
 uv sync
-
-# Cài đặt Playwright cho các site chạy JavaScript (tùy chọn)
-uv run playwright install chromium
 ```
 
 ## Cấu Hình
@@ -50,31 +48,16 @@ cp .env.example .env
 Thiết lập bắt buộc:
 ```env
 OPENAI_API_KEY=your-api-key
-OPENAI_BASE_URL=https://api.openai.com/v1  # hoặc endpoint tương thích
+OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4.1
-```
-
-Tùy chỉnh glossary (tùy chọn):
-```env
-# Số chương lấy mẫu để tạo glossary
-TRANSLATION_GLOSSARY_SAMPLE_CHAPTERS=5
-# Số ký tự mỗi chương mẫu
-TRANSLATION_GLOSSARY_SAMPLE_SIZE=3000
-# Số thuật ngữ tối thiểu/tối đa
-TRANSLATION_GLOSSARY_MIN_ENTRIES=20
-TRANSLATION_GLOSSARY_MAX_ENTRIES=100
-# Chọn chương ngẫu nhiên
-TRANSLATION_GLOSSARY_RANDOM_SAMPLE=true
 ```
 
 ## Bắt Đầu Nhanh
 
 ### Pipeline Đầy Đủ (Đơn Giản Nhất)
 
-Xử lý toàn bộ truyện trong một lệnh:
-
 ```bash
-# Mặc định: crawl tất cả chương, dịch, định dạng, xuất EPUB
+# Crawl + dịch + xuất EPUB
 uv run dich-truyen pipeline --url "https://www.piaotia.com/html/8/8717/index.html"
 
 # Chỉ dịch 10 chương đầu, xuất định dạng Kindle
@@ -82,141 +65,93 @@ uv run dich-truyen pipeline \
   --url "https://www.piaotia.com/html/8/8717/index.html" \
   --chapters 1-10 \
   --format azw3
+```
 
-# Sử dụng style tùy chỉnh và ép làm lại
+### Các Chế Độ Pipeline
+
+#### Chỉ Crawl (Review Trước Khi Dịch)
+
+```bash
+# Crawl chương để review trước khi dịch
+uv run dich-truyen pipeline --url "https://..." --crawl-only
+
+# Xem các chương đã crawl trong books/<book-dir>/raw/
+```
+
+#### Chỉ Dịch (Sách Đã Có)
+
+```bash
+# Dịch sách đã crawl trước đó
+uv run dich-truyen pipeline --book-dir books/my-book --translate-only
+
+# Dịch với glossary tùy chỉnh
 uv run dich-truyen pipeline \
-  --url "https://example.com/novel/index.html" \
-  --style kiem_hiep \
-  --chapters 1-50 \
-  --format pdf \
-  --force
+  --book-dir books/my-book \
+  --translate-only \
+  --glossary my-glossary.csv
 ```
 
-### Lệnh Riêng Lẻ (Kiểm Soát Chi Tiết Hơn)
-
-#### Trường hợp 1: Chỉ download (chưa dịch)
+#### Tiếp Tục Công Việc Bị Gián Đoạn
 
 ```bash
-# Chỉ crawl chương 1-100 để dịch sau
-uv run dich-truyen crawl \
-  --url "https://www.piaotia.com/html/8/8717/index.html" \
-  --chapters 1-100
+# Tiếp tục từ nơi dừng lại (tự động detect)
+uv run dich-truyen pipeline --book-dir books/my-book
 
-# Crawl với encoding cố định cho các site có vấn đề
-uv run dich-truyen crawl \
-  --url "https://example.com/novel/" \
-  --encoding gbk
-```
-
-#### Trường hợp 2: Dịch các chương cụ thể
-
-```bash
-# Dịch chương 1-10 với style mặc định
-uv run dich-truyen translate \
-  --book-dir books/8717-indexhtml \
-  --chapters 1-10
-
-# Dịch với glossary tùy chỉnh (chế độ chuyên gia)
-uv run dich-truyen translate \
-  --book-dir books/8717-indexhtml \
-  --glossary my-custom-glossary.csv \
-  --style huyen_huyen \
-  --no-auto-glossary
-
-# Ép dịch lại các chương với style khác
-uv run dich-truyen translate \
-  --book-dir books/8717-indexhtml \
-  --chapters 1-5 \
-  --style kiem_hiep \
-  --force
-```
-
-#### Trường hợp 3: Xuất sang các định dạng khác
-
-```bash
-# Xuất sang Kindle (AZW3)
-uv run dich-truyen export --book-dir books/8717-indexhtml --format azw3
-
-# Xuất sang PDF để in
-uv run dich-truyen export --book-dir books/8717-indexhtml --format pdf
-```
-
-#### Trường hợp 4: Tiếp tục công việc bị gián đoạn
-
-```bash
-# Tiếp tục download từ nơi bạn dừng lại
-uv run dich-truyen crawl --url "https://..." --resume
-
-# Tiếp tục dịch (hành vi mặc định)
-uv run dich-truyen translate --book-dir books/8717-indexhtml
+# Ép làm lại từ đầu
+uv run dich-truyen pipeline --book-dir books/my-book --force
 ```
 
 ## Tham Chiếu Lệnh
 
-### `crawl` - Download chương từ website
+### `pipeline` - Lệnh Chính
 
 ```bash
-uv run dich-truyen crawl [OPTIONS]
+uv run dich-truyen pipeline [OPTIONS]
 
 Tùy chọn:
-  --url TEXT            URL trang mục lục sách (bắt buộc)
-  --book-dir PATH       Thư mục sách
-  --chapters TEXT       Phạm vi chương, ví dụ: "1-100" hoặc "1,5,10-20"
-  --encoding TEXT       Ép encoding (tự động phát hiện nếu không đặt)
-  --resume/--no-resume  Tiếp tục download bị gián đoạn (mặc định: resume)
-  --force               Ép download lại ngay cả khi đã download
+  --url TEXT            URL trang mục lục sách (cho sách mới)
+  --book-dir PATH       Thư mục sách đã có
+  --chapters TEXT       Phạm vi chương, ví dụ: "1-100"
+  --style TEXT          Style dịch (mặc định: tien_hiep)
+  --format CHOICE       Định dạng: epub, azw3, mobi, pdf
+  --workers INT         Số worker dịch (mặc định: 3)
+  --crawl-only          Chỉ crawl, không dịch
+  --translate-only      Chỉ dịch, không crawl
+  --skip-export         Bỏ qua xuất ebook
+  --no-glossary         Tắt auto-glossary
+  --glossary PATH       Import glossary từ CSV
+  --force               Ép làm lại tất cả
 ```
 
-### `translate` - Dịch các chương
+### `export` - Xuất Ebook
 
 ```bash
-uv run dich-truyen translate [OPTIONS]
-
-Tùy chọn:
-  --book-dir PATH       Thư mục sách (bắt buộc)
-  --chapters TEXT       Phạm vi chương, ví dụ: "1-100" hoặc "1,5,10-20"
-  --style TEXT          Template style dịch (mặc định: tien_hiep)
-  --glossary PATH       Import glossary CSV
-  --auto-glossary       Tự động tạo glossary (mặc định: bật)
-  --chunk-size INT      Số ký tự mỗi chunk dịch
-  --resume/--no-resume  Tiếp tục dịch bị gián đoạn
-  --force               Ép dịch lại ngay cả khi đã dịch
+uv run dich-truyen export --book-dir books/my-book --format azw3
 ```
 
-### `export` - Chuyển đổi sang ebook
-
-Tạo EPUB trực tiếp từ các chương đã dịch với parallel assembly, sau đó chuyển đổi sang định dạng đích.
+### `glossary` - Quản Lý Glossary
 
 ```bash
-uv run dich-truyen export [OPTIONS]
+# Xem glossary
+uv run dich-truyen glossary show --book-dir books/my-book
 
-Tùy chọn:
-  --book-dir PATH     Thư mục sách (bắt buộc)
-  --format CHOICE     Định dạng: epub, azw3, mobi, pdf (mặc định: azw3)
-```
-
-### Quản Lý Glossary
-
-```bash
 # Xuất glossary
-uv run dich-truyen glossary export --book-dir ./books/my-book -o glossary.csv
+uv run dich-truyen glossary export --book-dir books/my-book -o glossary.csv
 
-# Import glossary
-uv run dich-truyen glossary import --book-dir ./books/my-book -i edited_glossary.csv
+# Import glossary (gộp với existing)
+uv run dich-truyen glossary import --book-dir books/my-book -i edited.csv --merge
+
+# Import glossary (thay thế)
+uv run dich-truyen glossary import --book-dir books/my-book -i new.csv --replace
 ```
 
-### Style Templates
-
-#### Liệt Kê Các Style Có Sẵn
+### `style` - Quản Lý Style
 
 ```bash
+# Liệt kê styles
 uv run dich-truyen style list
-```
 
-#### Tạo Style Tùy Chỉnh
-
-```bash
-# Tạo style mới sử dụng LLM
+# Tạo style mới bằng LLM
 uv run dich-truyen style generate \
   --description "Văn phong ngôn tình, lãng mạn hiện đại" \
   -o styles/ngon_tinh.yaml
@@ -235,31 +170,8 @@ uv run dich-truyen style generate \
 
 ### Style Tùy Chỉnh
 
-Bạn có thể tạo style tùy chỉnh hoặc **ghi đè style có sẵn** bằng cách đặt file YAML trong thư mục `styles/`.
-
-**Thứ tự ưu tiên:**
-1. Style tùy chỉnh trong `styles/` (kiểm tra trước)
-2. Style có sẵn (dự phòng)
-
-**Ví dụ:**
-
-```bash
-# Sử dụng style có sẵn
-uv run dich-truyen translate --book-dir books/my-book --style tien_hiep
-
-# Sử dụng style tùy chỉnh
-uv run dich-truyen translate --book-dir books/my-book --style ngon_tinh
-
-# Ghi đè style có sẵn: tạo styles/tien_hiep.yaml
-# File styles/tien_hiep.yaml của bạn sẽ được dùng thay vì style có sẵn
-uv run dich-truyen style generate \
-  --description "Văn phong tiên hiệp cải tiến" \
-  -o styles/tien_hiep.yaml
-```
-
-**Cấu trúc style tùy chỉnh (YAML):**
-
 ```yaml
+# styles/ngon_tinh.yaml
 name: ngon_tinh
 description: Văn phong ngôn tình, lãng mạn hiện đại
 guidelines:
@@ -279,20 +191,12 @@ examples:
 
 ```
 books/
-└── 8717-indexhtml/         # Thư mục sách
+└── 8717-indexhtml/
     ├── book.json           # Metadata & tiến độ
     ├── glossary.csv        # Thuật ngữ dịch
     ├── raw/                # Chương đã download
-    │   ├── 0001_chapter.txt
-    │   └── ...
     ├── translated/         # Chương đã dịch
-    │   └── ...
-    ├── epub_build/         # Thư mục build EPUB (tự động tạo)
-    │   ├── OEBPS/
-    │   │   ├── chapters/   # File XHTML các chương
-    │   │   ├── content.opf
-    │   │   └── toc.ncx
-    │   └── ...
+    ├── epub_build/         # Thư mục build EPUB
     └── output/             # Ebook đã xuất
         ├── book.epub
         └── book.azw3

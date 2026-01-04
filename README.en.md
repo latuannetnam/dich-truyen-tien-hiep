@@ -8,22 +8,23 @@ A command-line tool for crawling, translating, and exporting Chinese novels to V
 
 ### Core Features
 
-- 🕷️ **Smart Web Crawler**: Uses LLM to discover chapter structure from Chinese novel websites
+- 🕷️ **Smart Crawler**: Uses LLM to automatically discover chapter structure from Chinese novel websites
 - 🌐 **Translation Engine**: Translates Chinese to Vietnamese with customizable style templates
 - 📖 **4 Built-in Styles**: Tiên hiệp, Kiếm hiệp, Huyền huyễn, Đô thị
-- 📚 **Glossary System**: Maintains consistent term translations (CSV import/export)
-- 📕 **Ebook Export**: Converts to EPUB, AZW3, MOBI, PDF via Calibre
+- 📚 **Glossary System**: Maintains consistent terminology (import/export CSV)
+- 📕 **Ebook Export**: Convert to EPUB, AZW3, MOBI, PDF via Calibre
 - 🔄 **Resumable Operations**: Continue interrupted downloads/translations
+- ⚡ **Streaming Pipeline**: Concurrent crawl and translate with multiple workers
 
 ### Advanced Techniques
 
 | Technique | Description |
 |-----------|-------------|
-| 🎯 **Smart Dialogue Chunking** | Keeps dialogue blocks together in the same chunk to maintain context and attribution |
-| 📈 **Progressive Glossary Building** | Automatically extracts new terms from each translated chapter to continuously improve quality |
-| 🔍 **TF-IDF Glossary Selection** | Selects the most relevant glossary terms for each chunk based on TF-IDF relevance scores |
-| ⚡ **Direct EPUB Assembly** | Creates EPUB directly with parallel file writing, 10-20x faster than legacy HTML approach |
-| 🚀 **Parallel Translation** | Translates multiple chunks concurrently with context overlap to maintain coherence |
+| 🎯 **Smart Dialogue Chunking** | Keeps dialogue blocks together to maintain context |
+| 📈 **Progressive Glossary Building** | Automatically extracts new terms from each translated chapter |
+| 🔍 **TF-IDF Glossary Selection** | Selects most relevant glossary terms based on TF-IDF scores |
+| ⚡ **Direct EPUB Assembly** | Creates EPUB directly with parallel file writing, 10-20x faster |
+| 🚀 **Concurrent Pipeline** | Crawl and translate in parallel with multiple workers |
 
 ## Installation
 
@@ -34,9 +35,6 @@ cd dich-truyen-tien-hiep
 
 # Install with uv
 uv sync
-
-# Install Playwright for JavaScript-rendered sites (optional)
-uv run playwright install chromium
 ```
 
 ## Configuration
@@ -50,7 +48,7 @@ cp .env.example .env
 Required settings:
 ```env
 OPENAI_API_KEY=your-api-key
-OPENAI_BASE_URL=https://api.openai.com/v1  # or compatible endpoint
+OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4.1
 ```
 
@@ -58,155 +56,105 @@ OPENAI_MODEL=gpt-4.1
 
 ### Full Pipeline (Simplest)
 
-Process an entire book in one command:
-
 ```bash
-# Default: crawl all chapters, translate, format, export to EPUB
+# Crawl + translate + export to EPUB
 uv run dich-truyen pipeline --url "https://www.piaotia.com/html/8/8717/index.html"
 
-# Translate first 10 chapters only, export to Kindle format
+# Only first 10 chapters, export to Kindle format
 uv run dich-truyen pipeline \
   --url "https://www.piaotia.com/html/8/8717/index.html" \
   --chapters 1-10 \
   --format azw3
+```
 
-# Use custom style and force re-process
+### Pipeline Modes
+
+#### Crawl Only (Review Before Translation)
+
+```bash
+# Crawl chapters for review before translating
+uv run dich-truyen pipeline --url "https://..." --crawl-only
+
+# Check downloaded chapters in books/<book-dir>/raw/
+```
+
+#### Translate Only (Existing Book)
+
+```bash
+# Translate a previously crawled book
+uv run dich-truyen pipeline --book-dir books/my-book --translate-only
+
+# Translate with custom glossary
 uv run dich-truyen pipeline \
-  --url "https://example.com/novel/index.html" \
-  --style kiem_hiep \
-  --chapters 1-50 \
-  --format pdf \
-  --force
+  --book-dir books/my-book \
+  --translate-only \
+  --glossary my-glossary.csv
 ```
 
-### Individual Commands (More Control)
-
-#### Use Case 1: Download only (no translation yet)
+#### Resume Interrupted Work
 
 ```bash
-# Just crawl chapters 1-100 for later translation
-uv run dich-truyen crawl \
-  --url "https://www.piaotia.com/html/8/8717/index.html" \
-  --chapters 1-100
+# Resume from where you left off (auto-detected)
+uv run dich-truyen pipeline --book-dir books/my-book
 
-# Crawl with forced encoding for problematic sites
-uv run dich-truyen crawl \
-  --url "https://example.com/novel/" \
-  --encoding gbk
-```
-
-#### Use Case 2: Translate specific chapters
-
-```bash
-# Translate chapters 1-10 with default style
-uv run dich-truyen translate \
-  --book-dir books/8717-indexhtml \
-  --chapters 1-10
-
-# Translate with custom glossary (expert mode)
-uv run dich-truyen translate \
-  --book-dir books/8717-indexhtml \
-  --glossary my-custom-glossary.csv \
-  --style huyen_huyen \
-  --no-auto-glossary
-
-# Force re-translate chapters with different style
-uv run dich-truyen translate \
-  --book-dir books/8717-indexhtml \
-  --chapters 1-5 \
-  --style kiem_hiep \
-  --force
-```
-
-#### Use Case 3: Export to different formats
-
-```bash
-# Export to Kindle (AZW3)
-uv run dich-truyen export --book-dir books/8717-indexhtml --format azw3
-
-# Export to PDF for printing
-uv run dich-truyen export --book-dir books/8717-indexhtml --format pdf
-```
-
-#### Use Case 4: Resume interrupted work
-
-```bash
-# Continue downloading where you left off
-uv run dich-truyen crawl --url "https://..." --resume
-
-# Continue translating (default behavior)
-uv run dich-truyen translate --book-dir books/8717-indexhtml
+# Force restart from beginning
+uv run dich-truyen pipeline --book-dir books/my-book --force
 ```
 
 ## Command Reference
 
-### `crawl` - Download chapters from website
+### `pipeline` - Main Command
 
 ```bash
-uv run dich-truyen crawl [OPTIONS]
+uv run dich-truyen pipeline [OPTIONS]
 
 Options:
-  --url TEXT            Book index page URL (required)
-  --book-dir PATH       Book directory
-  --chapters TEXT       Chapter range, e.g., "1-100" or "1,5,10-20"
-  --encoding TEXT       Force encoding (auto-detect if not set)
-  --resume/--no-resume  Resume interrupted download (default: resume)
-  --force               Force re-download even if already downloaded
+  --url TEXT            Book index page URL (for new books)
+  --book-dir PATH       Existing book directory
+  --chapters TEXT       Chapter range, e.g., "1-100"
+  --style TEXT          Translation style (default: tien_hiep)
+  --format CHOICE       Output format: epub, azw3, mobi, pdf
+  --workers INT         Number of translation workers (default: 3)
+  --crawl-only          Stop after crawl phase (no translation)
+  --translate-only      Skip crawl, only translate existing chapters
+  --skip-export         Skip export phase
+  --no-glossary         Disable auto-glossary generation
+  --glossary PATH       Import glossary from CSV before translation
+  --force               Force re-process all chapters
 ```
 
-### `translate` - Translate chapters
+### `export` - Export to Ebook
 
 ```bash
-uv run dich-truyen translate [OPTIONS]
-
-Options:
-  --book-dir PATH       Book directory (required)
-  --chapters TEXT       Chapter range, e.g., "1-100" or "1,5,10-20"
-  --style TEXT          Style template (default: tien_hiep)
-  --glossary PATH       Import glossary from CSV
-  --auto-glossary       Auto-generate glossary (default: on)
-  --chunk-size INT      Characters per translation chunk
-  --resume/--no-resume  Resume interrupted translation
-  --force               Force re-translate even if already translated
+uv run dich-truyen export --book-dir books/my-book --format azw3
 ```
 
-### `export` - Convert to ebook
-
-Creates EPUB directly from translated chapters using parallel assembly, then converts to target format.
+### `glossary` - Manage Glossaries
 
 ```bash
-uv run dich-truyen export [OPTIONS]
+# Show glossary
+uv run dich-truyen glossary show --book-dir books/my-book
 
-Options:
-  --book-dir PATH     Book directory (required)
-  --format CHOICE     Output format: epub, azw3, mobi, pdf (default: azw3)
-```
-
-### Glossary Management
-
-```bash
 # Export glossary
-uv run dich-truyen glossary export --book-dir ./books/my-book -o glossary.csv
+uv run dich-truyen glossary export --book-dir books/my-book -o glossary.csv
 
-# Import glossary
-uv run dich-truyen glossary import --book-dir ./books/my-book -i edited_glossary.csv
+# Import glossary (merge with existing)
+uv run dich-truyen glossary import --book-dir books/my-book -i edited.csv --merge
+
+# Import glossary (replace)
+uv run dich-truyen glossary import --book-dir books/my-book -i new.csv --replace
 ```
 
-### Style Templates
-
-#### List Available Styles
+### `style` - Manage Styles
 
 ```bash
+# List styles
 uv run dich-truyen style list
-```
 
-#### Generate Custom Style
-
-```bash
-# Create a new custom style using LLM
+# Generate new style using LLM
 uv run dich-truyen style generate \
-  --description "Văn phong ngôn tình, lãng mạn hiện đại" \
-  -o styles/ngon_tinh.yaml
+  --description "Modern romance style, soft and emotional" \
+  -o styles/romance.yaml
 ```
 
 ## Translation Styles
@@ -215,43 +163,20 @@ uv run dich-truyen style generate \
 
 | Style | Description | Use For |
 |-------|-------------|---------|
-| `tien_hiep` | Tiên hiệp, tu chân, cổ trang | 仙侠, 修真 novels |
-| `kiem_hiep` | Kiếm hiệp, võ lâm, giang hồ | 武侠 novels |
-| `huyen_huyen` | Huyền huyễn, kỳ ảo, ma pháp | 玄幻 novels |
-| `do_thi` | Đô thị, hiện đại, nhẹ nhàng | 都市 novels |
+| `tien_hiep` | Xianxia, cultivation, ancient setting | 仙侠, 修真 novels |
+| `kiem_hiep` | Wuxia, martial arts, jianghu | 武侠 novels |
+| `huyen_huyen` | Xuanhuan, fantasy, magic | 玄幻 novels |
+| `do_thi` | Urban, modern, casual | 都市 novels |
 
 ### Custom Styles
 
-You can create custom styles or **override built-in styles** by placing YAML files in the `styles/` directory.
-
-**Priority order:**
-1. Custom styles in `styles/` (checked first)
-2. Built-in styles (fallback)
-
-**Examples:**
-
-```bash
-# Use a built-in style
-uv run dich-truyen translate --book-dir books/my-book --style tien_hiep
-
-# Use a custom style
-uv run dich-truyen translate --book-dir books/my-book --style ngon_tinh
-
-# Override a built-in style: create styles/tien_hiep.yaml
-# Your custom styles/tien_hiep.yaml will be used instead of the built-in one
-uv run dich-truyen style generate \
-  --description "Văn phong tiên hiệp cải tiến" \
-  -o styles/tien_hiep.yaml
-```
-
-**Custom style structure (YAML):**
-
 ```yaml
-name: ngon_tinh
-description: Văn phong ngôn tình, lãng mạn hiện đại
+# styles/romance.yaml
+name: romance
+description: Modern romance style
 guidelines:
-  - Ngôn ngữ mềm mại, lãng mạn
-  - Đại từ: 'anh', 'em', 'cô ấy'
+  - Soft and emotional language
+  - Pronouns: 'anh', 'em'
 vocabulary:
   我: em
   你: anh
@@ -266,20 +191,12 @@ examples:
 
 ```
 books/
-└── html-8-8717/            # Book folder
-    ├── book.json           # Book metadata & progress
-    ├── glossary.csv        # Term translations
+└── 8717-indexhtml/
+    ├── book.json           # Metadata & progress
+    ├── glossary.csv        # Translation glossary
     ├── raw/                # Downloaded chapters
-    │   ├── 0001_chapter.txt
-    │   └── ...
     ├── translated/         # Translated chapters
-    │   └── ...
-    ├── epub_build/         # EPUB build directory (auto-generated)
-    │   ├── OEBPS/
-    │   │   ├── chapters/   # Chapter XHTML files
-    │   │   ├── content.opf
-    │   │   └── toc.ncx
-    │   └── ...
+    ├── epub_build/         # EPUB build directory
     └── output/             # Exported ebooks
         ├── book.epub
         └── book.azw3
