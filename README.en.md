@@ -6,12 +6,24 @@ A command-line tool for crawling, translating, and exporting Chinese novels to V
 
 ## Features
 
+### Core Features
+
 - 🕷️ **Smart Web Crawler**: Uses LLM to discover chapter structure from Chinese novel websites
 - 🌐 **Translation Engine**: Translates Chinese to Vietnamese with customizable style templates
 - 📖 **4 Built-in Styles**: Tiên hiệp, Kiếm hiệp, Huyền huyễn, Đô thị
 - 📚 **Glossary System**: Maintains consistent term translations (CSV import/export)
 - 📕 **Ebook Export**: Converts to EPUB, AZW3, MOBI, PDF via Calibre
 - 🔄 **Resumable Operations**: Continue interrupted downloads/translations
+
+### Advanced Techniques
+
+| Technique | Description |
+|-----------|-------------|
+| 🎯 **Smart Dialogue Chunking** | Keeps dialogue blocks together in the same chunk to maintain context and attribution |
+| 📈 **Progressive Glossary Building** | Automatically extracts new terms from each translated chapter to continuously improve quality |
+| 🔍 **TF-IDF Glossary Selection** | Selects the most relevant glossary terms for each chunk based on TF-IDF relevance scores |
+| ⚡ **Direct EPUB Assembly** | Creates EPUB directly with parallel file writing, 10-20x faster than legacy HTML approach |
+| 🚀 **Parallel Translation** | Translates multiple chunks concurrently with context overlap to maintain coherence |
 
 ## Installation
 
@@ -106,19 +118,7 @@ uv run dich-truyen translate \
   --force
 ```
 
-#### Use Case 3: Custom book metadata
-
-```bash
-# Format with custom title and translator name
-uv run dich-truyen format \
-  --book-dir books/8717-indexhtml \
-  --title "Kiếm Lai" \
-  --author "Phong Hỏa Hí Chư Hầu" \
-  --translator "AI Translator" \
-  --cover cover.jpg
-```
-
-#### Use Case 4: Export to different formats
+#### Use Case 3: Export to different formats
 
 ```bash
 # Export to Kindle (AZW3)
@@ -126,15 +126,9 @@ uv run dich-truyen export --book-dir books/8717-indexhtml --format azw3
 
 # Export to PDF for printing
 uv run dich-truyen export --book-dir books/8717-indexhtml --format pdf
-
-# Export with custom Calibre path
-uv run dich-truyen export \
-  --book-dir books/8717-indexhtml \
-  --format epub \
-  --calibre-path "C:/Program Files/Calibre2/ebook-convert.exe"
 ```
 
-#### Use Case 5: Resume interrupted work
+#### Use Case 4: Resume interrupted work
 
 ```bash
 # Continue downloading where you left off
@@ -176,28 +170,16 @@ Options:
   --force               Force re-translate even if already translated
 ```
 
-### `format` - Assemble HTML book
-
-```bash
-uv run dich-truyen format [OPTIONS]
-
-Options:
-  --book-dir PATH     Book directory (required)
-  --title TEXT        Override book title
-  --author TEXT       Override author name
-  --translator TEXT   Translator name
-  --cover PATH        Cover image path
-```
-
 ### `export` - Convert to ebook
+
+Creates EPUB directly from translated chapters using parallel assembly, then converts to target format.
 
 ```bash
 uv run dich-truyen export [OPTIONS]
 
 Options:
   --book-dir PATH     Book directory (required)
-  --format CHOICE     Output format: epub, azw3, mobi, pdf (default: epub)
-  --calibre-path PATH Path to ebook-convert executable
+  --format CHOICE     Output format: epub, azw3, mobi, pdf (default: azw3)
 ```
 
 ### Glossary Management
@@ -292,10 +274,15 @@ books/
     │   └── ...
     ├── translated/         # Translated chapters
     │   └── ...
-    ├── formatted/          # Assembled HTML
-    │   └── book.html
+    ├── epub_build/         # EPUB build directory (auto-generated)
+    │   ├── OEBPS/
+    │   │   ├── chapters/   # Chapter XHTML files
+    │   │   ├── content.opf
+    │   │   └── toc.ncx
+    │   └── ...
     └── output/             # Exported ebooks
-        └── book.epub
+        ├── book.epub
+        └── book.azw3
 ```
 
 ## Requirements

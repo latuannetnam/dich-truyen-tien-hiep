@@ -6,12 +6,24 @@ Công cụ dòng lệnh để crawl, dịch và xuất truyện Trung Quốc san
 
 ## Tính Năng
 
+### Tính Năng Chính
+
 - 🕷️ **Crawler Thông Minh**: Sử dụng LLM để tự động phát hiện cấu trúc chương từ các website truyện Trung Quốc
 - 🌐 **Công Cụ Dịch**: Dịch từ tiếng Trung sang tiếng Việt với các style template có thể tùy chỉnh
 - 📖 **4 Style Có Sẵn**: Tiên hiệp, Kiếm hiệp, Huyền huyễn, Đô thị
 - 📚 **Hệ Thống Glossary**: Duy trì thuật ngữ nhất quán (import/export CSV)
 - 📕 **Xuất Ebook**: Chuyển đổi sang EPUB, AZW3, MOBI, PDF qua Calibre
 - 🔄 **Hoạt Động Tiếp Tục Được**: Tiếp tục download/dịch khi bị gián đoạn
+
+### Kỹ Thuật Nâng Cao
+
+| Kỹ Thuật | Mô Tả |
+|----------|-------|
+| 🎯 **Smart Dialogue Chunking** | Giữ nguyên các đoạn hội thoại trong cùng một chunk để duy trì ngữ cảnh và tính nhất quán |
+| 📈 **Progressive Glossary Building** | Tự động trích xuất thuật ngữ mới từ mỗi chương đã dịch để cải thiện chất lượng liên tục |
+| 🔍 **TF-IDF Glossary Selection** | Chọn thuật ngữ phù hợp nhất cho từng chunk dựa trên điểm relevance TF-IDF |
+| ⚡ **Direct EPUB Assembly** | Tạo EPUB trực tiếp với parallel writing, nhanh hơn 10-20x so với phương pháp HTML cũ |
+| 🚀 **Parallel Translation** | Dịch nhiều chunk đồng thời với context overlap để duy trì tính mạch lạc |
 
 ## Cài Đặt
 
@@ -119,19 +131,7 @@ uv run dich-truyen translate \
   --force
 ```
 
-#### Trường hợp 3: Tùy chỉnh metadata sách
-
-```bash
-# Định dạng với tiêu đề và tên dịch giả tùy chỉnh
-uv run dich-truyen format \
-  --book-dir books/8717-indexhtml \
-  --title "Kiếm Lai" \
-  --author "Phong Hỏa Hí Chư Hầu" \
-  --translator "AI Translator" \
-  --cover cover.jpg
-```
-
-#### Trường hợp 4: Xuất sang các định dạng khác
+#### Trường hợp 3: Xuất sang các định dạng khác
 
 ```bash
 # Xuất sang Kindle (AZW3)
@@ -139,15 +139,9 @@ uv run dich-truyen export --book-dir books/8717-indexhtml --format azw3
 
 # Xuất sang PDF để in
 uv run dich-truyen export --book-dir books/8717-indexhtml --format pdf
-
-# Xuất với đường dẫn Calibre tùy chỉnh
-uv run dich-truyen export \
-  --book-dir books/8717-indexhtml \
-  --format epub \
-  --calibre-path "C:/Program Files/Calibre2/ebook-convert.exe"
 ```
 
-#### Trường hợp 5: Tiếp tục công việc bị gián đoạn
+#### Trường hợp 4: Tiếp tục công việc bị gián đoạn
 
 ```bash
 # Tiếp tục download từ nơi bạn dừng lại
@@ -189,20 +183,9 @@ Tùy chọn:
   --force               Ép dịch lại ngay cả khi đã dịch
 ```
 
-### `format` - Tạo sách HTML
-
-```bash
-uv run dich-truyen format [OPTIONS]
-
-Tùy chọn:
-  --book-dir PATH     Thư mục sách (bắt buộc)
-  --title TEXT        Ghi đè tiêu đề sách
-  --author TEXT       Ghi đè tên tác giả
-  --translator TEXT   Tên dịch giả
-  --cover PATH        Đường dẫn ảnh bìa
-```
-
 ### `export` - Chuyển đổi sang ebook
+
+Tạo EPUB trực tiếp từ các chương đã dịch với parallel assembly, sau đó chuyển đổi sang định dạng đích.
 
 ```bash
 uv run dich-truyen export [OPTIONS]
@@ -210,7 +193,6 @@ uv run dich-truyen export [OPTIONS]
 Tùy chọn:
   --book-dir PATH     Thư mục sách (bắt buộc)
   --format CHOICE     Định dạng: epub, azw3, mobi, pdf (mặc định: azw3)
-  --calibre-path PATH Đường dẫn đến ebook-convert
 ```
 
 ### Quản Lý Glossary
@@ -305,9 +287,14 @@ books/
     │   └── ...
     ├── translated/         # Chương đã dịch
     │   └── ...
-    ├── formatted/          # HTML đã tạo
-    │   └── book.html
+    ├── epub_build/         # Thư mục build EPUB (tự động tạo)
+    │   ├── OEBPS/
+    │   │   ├── chapters/   # File XHTML các chương
+    │   │   ├── content.opf
+    │   │   └── toc.ncx
+    │   └── ...
     └── output/             # Ebook đã xuất
+        ├── book.epub
         └── book.azw3
 ```
 
