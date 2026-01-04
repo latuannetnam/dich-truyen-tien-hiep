@@ -181,6 +181,7 @@ class StreamingPipeline:
                 total_chapters=len(chapters),
                 skipped_crawl=len(chapters),
                 skipped_translate=len(chapters),
+                all_done=True,  # All chapters are already translated
             )
         
         # Setup translation engine (this also translates book metadata)
