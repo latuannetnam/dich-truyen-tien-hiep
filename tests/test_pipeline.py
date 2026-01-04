@@ -96,7 +96,7 @@ class TestStreamingPipeline:
         pipeline = StreamingPipeline()
         
         assert pipeline.num_workers == 3
-        assert pipeline.queue.maxsize == 10
+        assert pipeline.queue.maxsize == 0  # Unbounded queue
         assert pipeline._progress_lock is not None
         assert pipeline._glossary_lock is not None
     

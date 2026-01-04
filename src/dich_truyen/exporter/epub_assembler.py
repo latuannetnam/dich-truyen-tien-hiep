@@ -224,7 +224,7 @@ class DirectEPUBAssembler:
         content: str,
     ) -> None:
         """Write single chapter as XHTML file."""
-        title = escape(chapter.title_vi or chapter.title or f"Chương {index}")
+        title = escape(chapter.title_vi or chapter.title_cn or f"Chương {index}")
         
         # Convert paragraphs to HTML
         paragraphs = content.strip().split("\n\n")
@@ -305,7 +305,7 @@ class DirectEPUBAssembler:
         # Build navPoints
         nav_points = []
         for i, chapter in enumerate(chapters, 1):
-            ch_title = escape(chapter.title_vi or chapter.title or f"Chương {i}")
+            ch_title = escape(chapter.title_vi or chapter.title_cn or f"Chương {i}")
             nav_points.append(f"""    <navPoint id="navpoint{i}" playOrder="{i}">
       <navLabel><text>{ch_title}</text></navLabel>
       <content src="chapters/chapter_{i:04d}.xhtml"/>

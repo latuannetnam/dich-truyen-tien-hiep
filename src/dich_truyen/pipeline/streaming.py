@@ -50,6 +50,8 @@ class PipelineStats:
     errors: list[str] = field(default_factory=list)
     # Worker status tracking: {worker_id: "Ch.1: [1,2,3]"}
     worker_status: dict = field(default_factory=dict)
+    # Crawl status: "Ch.5: 第五章..."
+    crawl_status: str = ""
 
 
 class StreamingPipeline:
@@ -78,10 +80,9 @@ class StreamingPipeline:
         self.config = config or get_config().pipeline
         self.num_workers = translator_workers or self.config.translator_workers
         
-        # Shared state
-        self.queue: asyncio.Queue[Chapter | None] = asyncio.Queue(
-            maxsize=self.config.queue_size
-        )
+        # Shared state - unbounded queue so crawler never blocks
+        # Resume works because chapter status is saved to disk after each operation
+        self.queue: asyncio.Queue[Chapter | None] = asyncio.Queue()  # maxsize=0 (unbounded)
         self.progress: Optional[BookProgress] = None
         self.book_dir: Optional[Path] = None
         self.stats = PipelineStats()
@@ -246,11 +247,6 @@ class StreamingPipeline:
                 errors=self.stats.errors,
             )
         
-        # Pre-queue already crawled chapters for translation
-        for chapter in to_translate:
-            await self.queue.put(chapter)
-            self.stats.chapters_in_queue += 1
-        
         # Start concurrent execution
         console.print(f"\n[dim]Starting {self.num_workers} translator workers...[/dim]")
         
@@ -267,78 +263,72 @@ class StreamingPipeline:
             # No crawling needed, signal completion
             self._crawl_complete.set()
         
-        # Translator tasks
+        # Translator tasks (start these BEFORE pre-queuing to avoid deadlock)
         for i in range(self.num_workers):
             tasks.append(asyncio.create_task(
                 self._translate_consumer(i + 1),
                 name=f"translator-{i+1}"
             ))
         
-        # Run with progress display
+        # Pre-queue already crawled chapters (now safe because consumers are running)
+        async def pre_queue_chapters():
+            for chapter in to_translate:
+                await self.queue.put(chapter)
+                self.stats.chapters_in_queue += 1
+        
+        # Start pre-queuing as a task
+        if to_translate:
+            tasks.append(asyncio.create_task(
+                pre_queue_chapters(),
+                name="pre-queue"
+            ))
+        
+        # Run with simple periodic status updates (most compatible)
         try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                TextColumn("{task.fields[status]}"),
-                console=console,
-                transient=True,
-            ) as progress_bar:
-                crawl_task = progress_bar.add_task(
-                    "[cyan]Crawling",
-                    total=len(to_crawl) if to_crawl else 1,
-                    status="",
-                    visible=bool(to_crawl),
-                )
-                translate_task = progress_bar.add_task(
-                    "[green]Translating",
-                    total=len(to_crawl) + len(to_translate),
-                    status="",
-                )
-                
-                # Create worker status tasks
-                worker_tasks = {}
-                for i in range(self.num_workers):
-                    worker_tasks[i + 1] = progress_bar.add_task(
-                        f"[dim]Worker {i+1}",
-                        total=None,  # Indeterminate
-                        status="idle",
-                    )
-                
-                # Update progress periodically
-                async def update_progress():
-                    while not self._stop_requested:
-                        # Update crawl progress
-                        progress_bar.update(
-                            crawl_task,
-                            completed=self.stats.chapters_crawled,
-                            status=f"queue: {self.stats.chapters_in_queue}",
-                        )
-                        # Update translate progress  
-                        progress_bar.update(
-                            translate_task,
-                            completed=self.stats.chapters_translated,
-                            status=f"errors: {self.stats.translate_errors}",
-                        )
-                        # Update worker statuses
-                        for wid, task_id in worker_tasks.items():
+            last_print_time = 0
+            
+            async def print_status():
+                nonlocal last_print_time
+                import time
+                while not self._stop_requested:
+                    current_time = time.time()
+                    # Print status every 3 seconds
+                    if current_time - last_print_time >= 3:
+                        last_print_time = current_time
+                        crawl_pct = int(100 * self.stats.chapters_crawled / len(to_crawl)) if to_crawl else 100
+                        trans_total = len(to_crawl) + len(to_translate)
+                        trans_pct = int(100 * self.stats.chapters_translated / trans_total) if trans_total else 100
+                        
+                        # Summary line
+                        summary = f"[bold]Crawl: {self.stats.chapters_crawled}/{len(to_crawl)} ({crawl_pct}%)[/bold] | "
+                        summary += f"[bold]Translate: {self.stats.chapters_translated}/{trans_total} ({trans_pct}%)[/bold]"
+                        if self.stats.translate_errors:
+                            summary += f" | [red]Err: {self.stats.translate_errors}[/red]"
+                        console.print(summary)
+                        
+                        # Crawl detail (if crawling)
+                        if self.stats.crawl_status and crawl_pct < 100:
+                            console.print(f"  [cyan]↓ Downloading:[/cyan] {self.stats.crawl_status}")
+                        
+                        # Worker details
+                        for wid in range(1, self.num_workers + 1):
                             status = self.stats.worker_status.get(wid, "idle")
-                            progress_bar.update(
-                                task_id,
-                                description=f"[dim]Worker {wid}",
-                                status=status,
-                            )
-                        await asyncio.sleep(0.3)  # Faster updates for responsiveness
-                
-                progress_task = asyncio.create_task(update_progress())
-                
-                # Wait for all tasks to complete
-                await asyncio.gather(*tasks)
-                
-                # Stop progress updates
-                self._stop_requested = True
-                await progress_task
+                            if status != "idle" and status != "done":
+                                console.print(f"  [green]⚡ Worker {wid}:[/green] {status}")
+                    
+                    await asyncio.sleep(0.5)
+            
+            status_task = asyncio.create_task(print_status())
+            
+            # Wait for all tasks to complete
+            await asyncio.gather(*tasks)
+            
+            # Stop status updates
+            self._stop_requested = True
+            try:
+                await asyncio.wait_for(status_task, timeout=0.5)
+            except asyncio.TimeoutError:
+                status_task.cancel()
         
         except asyncio.CancelledError:
             console.print("[yellow]Pipeline cancelled[/yellow]")
@@ -393,6 +383,10 @@ class StreamingPipeline:
                         break
                     
                     try:
+                        # Update crawl status
+                        title_preview = (chapter.title_cn or "")[:15]
+                        self.stats.crawl_status = f"Ch.{chapter.index}: {title_preview}..."
+                        
                         # Fetch chapter page
                         html = await crawler.fetch(chapter.url, self.progress.encoding)
                         
@@ -477,12 +471,18 @@ class StreamingPipeline:
                 output_path = translated_dir / f"{chapter.index}.txt"
                 
                 # Create progress callback for chunk-level updates
-                chapter_title = (chapter.title_cn or "")[:12]
-                def progress_callback(chunk_idx, total_chunks, status=""):
-                    self.stats.worker_status[worker_id] = f"Ch.{chapter.index}: {chapter_title}... {status}"
-                    # Track chunk progress only when marked as done
-                    if "done" in status.lower():
-                        self.stats.chunks_translated += 1
+                chapter_title = (chapter.title_cn or "")[:15]
+                def progress_callback(completed_count, total_chunks, status=""):
+                    # status from engine: "translating [1,2]" or "[done]" or "[1,2]"
+                    # Show: "Ch.5: 章节标题... 2/5 [1,2]"
+                    progress_str = f"{completed_count}/{total_chunks}"
+                    self.stats.worker_status[worker_id] = f"Ch.{chapter.index}: {chapter_title}... {progress_str} {status}"
+                    # Track total chunks on first callback only
+                    if completed_count == 0 and "translating" in status:
+                        self.stats.total_chunks += total_chunks
+                    # Track chunk completion only when done (not when starting)
+                    if "done" in status or (completed_count > 0 and "translating" not in status):
+                        pass  # Don't double count - chunks_translated updated below
                 
                 # Translate chapter with progress callback
                 await self.engine.translate_chapter(source_path, output_path, progress_callback)
