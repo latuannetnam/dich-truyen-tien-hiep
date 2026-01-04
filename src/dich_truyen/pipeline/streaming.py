@@ -495,6 +495,20 @@ class StreamingPipeline:
     async def _extract_progressive_glossary(self, source_path: Path) -> None:
         """Thread-safe progressive glossary extraction.
         
+        Extracts new terms from a chapter and adds them to the shared glossary.
+        All workers share the same Glossary object reference, so updates are
+        immediately visible to other workers.
+        
+        Thread Safety:
+            - Uses _glossary_lock for concurrent add operations
+            - Python's GIL ensures list/dict operations are atomic
+            - New terms are available to subsequent translations
+        
+        Limitations:
+            - TF-IDF scorer is not updated, so new terms may not be optimally ranked
+            - Terms added during a translation won't be used in that translation
+            - These are acceptable tradeoffs for simplicity
+        
         Args:
             source_path: Path to source chapter file
         """
