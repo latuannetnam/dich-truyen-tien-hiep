@@ -511,7 +511,7 @@ async def extract_new_terms_from_chapter(
     text_sample = chinese_text[:2000] if len(chinese_text) > 2000 else chinese_text
     
     # Get existing terms for deduplication
-    existing_terms = ", ".join([e.chinese for e in existing_glossary.entries[:50]])
+    existing_terms = ", ".join([e.chinese for e in existing_glossary.entries[:200]])
     if not existing_terms:
         existing_terms = "(chưa có)"
 

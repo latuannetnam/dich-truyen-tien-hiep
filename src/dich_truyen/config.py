@@ -40,7 +40,7 @@ class TranslationConfig(BaseSettings):
 
     chunk_size: int = Field(default=2000, description="Characters per translation chunk")
     chunk_overlap: int = Field(default=300, description="Overlap characters for context in parallel mode")
-    concurrent_requests: int = Field(default=3, description="Concurrent translation requests")
+    concurrent_requests: int = Field(default=1, description="Concurrent translation requests")
     progressive_glossary: bool = Field(default=True, description="Extract new terms during translation")
     
     # Glossary generation settings
@@ -77,6 +77,20 @@ class PipelineConfig(BaseSettings):
     translator_workers: int = Field(default=3, description="Number of parallel translation workers")
     queue_size: int = Field(default=10, description="Max chapters buffered between crawl and translate")
     crawl_delay_ms: int = Field(default=1000, description="Delay between chapter downloads in ms")
+    
+    # Solution 4: Glossary sync settings
+    glossary_wait_timeout: int = Field(
+        default=60, 
+        description="Max seconds to wait for initial glossary before proceeding with empty"
+    )
+    glossary_batch_interval: int = Field(
+        default=60, 
+        description="Seconds between batch progressive extraction runs"
+    )
+    glossary_scorer_rebuild_threshold: int = Field(
+        default=5,
+        description="Rebuild TF-IDF scorer every N version increments"
+    )
 
 
 class AppConfig(BaseSettings):

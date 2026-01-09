@@ -107,6 +107,16 @@ class StreamingPipeline:
         self._stop_requested = False
         self._glossary_generated = False  # Track if glossary has been generated
         self._auto_glossary = True  # Whether to auto-generate glossary
+        
+        # Solution 4: Glossary sync
+        self._glossary_ready_event = asyncio.Event()  # Signal when glossary is ready
+        self._glossary_version = 0  # Increment when glossary changes
+        self._pending_extraction_paths: list[Path] = []  # Queued for batch extraction
+        self._last_scorer_rebuild_version = 0  # Track last TF-IDF rebuild
+        
+        # Graceful shutdown
+        self._shutdown_event = asyncio.Event()  # Signal for coordinated shutdown
+        self._cancelled = False  # Track if cancelled by user
     
     async def run(
         self,
@@ -277,6 +287,14 @@ class StreamingPipeline:
                 name=f"translator-{i+1}"
             ))
         
+        # Batch extraction background task (Solution 4) - managed separately
+        batch_extraction_task = None
+        if self.engine and self.engine.config.progressive_glossary:
+            batch_extraction_task = asyncio.create_task(
+                self._batch_extraction_task(),
+                name="batch-extraction"
+            )
+        
         # Pre-queue already crawled chapters (now safe because consumers are running)
         async def pre_queue_chapters():
             for chapter in to_translate:
@@ -360,7 +378,7 @@ class StreamingPipeline:
             with Live(build_status_table(), console=console, refresh_per_second=0.5, transient=True) as live:
                 async def update_display():
                     try:
-                        while not self._stop_requested:
+                        while not self._stop_requested and not self._shutdown_event.is_set():
                             live.update(build_status_table())
                             await asyncio.sleep(1)  # Update every 1 second
                     except asyncio.CancelledError:
@@ -371,6 +389,24 @@ class StreamingPipeline:
                 try:
                     # Wait for all tasks to complete
                     await asyncio.gather(*tasks)
+                except asyncio.CancelledError:
+                    # Graceful shutdown: signal workers, give them time to finish
+                    console.print("\n[yellow]Shutdown requested, finishing current work...[/yellow]")
+                    self._shutdown_event.set()
+                    self._cancelled = True
+                    
+                    # Wait up to 30s for workers to finish current chapters
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.gather(*tasks, return_exceptions=True),
+                            timeout=30
+                        )
+                    except asyncio.TimeoutError:
+                        console.print("[yellow]Timeout waiting for workers, forcing stop[/yellow]")
+                        for task in tasks:
+                            task.cancel()
+                        # Wait for cancellation to complete
+                        await asyncio.gather(*tasks, return_exceptions=True)
                 finally:
                     # Always stop display updates when tasks complete
                     self._stop_requested = True
@@ -380,21 +416,40 @@ class StreamingPipeline:
                     except asyncio.CancelledError:
                         pass
         
-        except asyncio.CancelledError:
-            console.print("[yellow]Pipeline cancelled[/yellow]")
-            self._stop_requested = True
-            self._cancelled = True  # Track cancellation
-            for task in tasks:
-                task.cancel()
+        except Exception as e:
+            # Handle any other unexpected exceptions
+            console.print(f"[red]Pipeline error: {e}[/red]")
+            self._cancelled = True
+        
+        finally:
+            # Signal shutdown to stop batch extraction task
+            self._shutdown_event.set()
+            
+            # Cancel and wait for batch extraction task
+            if batch_extraction_task is not None:
+                batch_extraction_task.cancel()
+                try:
+                    await batch_extraction_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Always save state on exit (normal, cancelled, or error)
+            if self.glossary and len(self.glossary) > 0:
+                self.glossary.save(self.book_dir)
+            if self.progress:
+                self.progress.save(self.book_dir)
         
         # Determine if all chapters in range are done
         # all_done = all chapters translated (no pending crawl or translate)
         total_target = len(to_crawl) + len(to_translate)
         all_translated = self.stats.chapters_translated >= total_target
-        was_cancelled = getattr(self, '_cancelled', False)
+        was_cancelled = self._cancelled
         
         # Final summary
-        console.print(f"\n[bold green]═══ Pipeline Complete! ═══[/bold green]")
+        if was_cancelled:
+            console.print(f"\n[bold yellow]═══ Pipeline Interrupted ═══[/bold yellow]")
+        else:
+            console.print(f"\n[bold green]═══ Pipeline Complete! ═══[/bold green]")
         console.print(f"  Crawled: {self.stats.chapters_crawled}")
         console.print(f"  Translated: {self.stats.chapters_translated}")
         if self.stats.crawl_errors:
@@ -402,9 +457,7 @@ class StreamingPipeline:
         if self.stats.translate_errors:
             console.print(f"  [yellow]Translate errors: {self.stats.translate_errors}[/yellow]")
         
-        # Save glossary (in case progressive mode added entries)
         if self.glossary and len(self.glossary) > 0:
-            self.glossary.save(self.book_dir)
             console.print(f"  Glossary: {len(self.glossary)} entries saved")
         
         return PipelineResult(
@@ -438,7 +491,7 @@ class StreamingPipeline:
         try:
             async with BaseCrawler(self.downloader.config) as crawler:
                 for chapter in chapters:
-                    if self._stop_requested:
+                    if self._stop_requested or self._shutdown_event.is_set():
                         break
                     
                     try:
@@ -506,8 +559,8 @@ class StreamingPipeline:
             # Wait for chapter from queue
             chapter = await self.queue.get()
             
-            # Check for poison pill
-            if chapter is None:
+            # Check for poison pill or shutdown
+            if chapter is None or self._shutdown_event.is_set():
                 self.stats.worker_status[worker_id] = "done"
                 break
             
@@ -555,9 +608,9 @@ class StreamingPipeline:
                         chapter.title_cn, "chapter"
                     )
                 
-                # Progressive glossary (thread-safe)
+                # Queue for batched progressive glossary (Solution 4)
                 if self.engine.config.progressive_glossary and self.glossary:
-                    await self._extract_progressive_glossary(source_path)
+                    self._pending_extraction_paths.append(source_path)
                 
                 # Update status safely
                 await self._update_chapter_status(chapter, ChapterStatus.TRANSLATED)
@@ -632,6 +685,9 @@ class StreamingPipeline:
         
         Called by first translation worker after crawl completes.
         Thread-safe - only one worker will generate.
+        
+        Solution 4 fix: Sets _glossary_generated flag AFTER successful completion,
+        not before. This allows another worker to retry if generation fails.
         """
         from dich_truyen.translator.glossary import generate_glossary_from_samples, Glossary
         
@@ -644,67 +700,213 @@ class StreamingPipeline:
             if self._glossary_generated:
                 return
             
-            # Mark as generated to prevent other workers from trying
-            self._glossary_generated = True
-            
             # Check if glossary already has entries
             if self.glossary and len(self.glossary) > 0:
+                self._glossary_generated = True
+                self._glossary_version = 1
+                self._glossary_ready_event.set()
                 console.print(f"[dim]  Glossary already has {len(self.glossary)} entries[/dim]")
                 return
             
             # Check for raw files
             raw_dir = self.book_dir / "raw"
             if not raw_dir.exists():
+                self._glossary_generated = True  # Nothing to generate from
+                self._glossary_ready_event.set()
                 return
             
             all_files = sorted(raw_dir.glob("*.txt"))
             if not all_files:
+                self._glossary_generated = True
+                self._glossary_ready_event.set()
                 return
             
             console.print("[blue]Generating glossary from crawled chapters...[/blue]")
             
-            # Get config values
-            config = get_config().translation
-            sample_chapter_count = config.glossary_sample_chapters
-            sample_size = config.glossary_sample_size
-            random_sample = config.glossary_random_sample
-            min_entries = config.glossary_min_entries
-            max_entries = config.glossary_max_entries
-            
-            # Sample from available files
-            import random
-            if len(all_files) > sample_chapter_count:
-                if random_sample:
-                    sample_files = random.sample(all_files, sample_chapter_count)
+            try:
+                # Get config values
+                config = get_config().translation
+                sample_chapter_count = config.glossary_sample_chapters
+                sample_size = config.glossary_sample_size
+                random_sample = config.glossary_random_sample
+                min_entries = config.glossary_min_entries
+                max_entries = config.glossary_max_entries
+                
+                # Sample from available files
+                import random
+                if len(all_files) > sample_chapter_count:
+                    if random_sample:
+                        sample_files = random.sample(all_files, sample_chapter_count)
+                    else:
+                        sample_files = all_files[:sample_chapter_count]
                 else:
-                    sample_files = all_files[:sample_chapter_count]
-            else:
-                sample_files = all_files
+                    sample_files = all_files
+                
+                # Read samples
+                samples = []
+                for f in sample_files:
+                    try:
+                        content = f.read_text(encoding="utf-8")
+                        samples.append(content[:sample_size])
+                    except Exception:
+                        pass
+                
+                if samples:
+                    # Create glossary if needed
+                    if not self.glossary:
+                        self.glossary = Glossary.load_or_create(self.book_dir)
+                        self.engine.glossary = self.glossary
+                    
+                    # Generate
+                    self.glossary = await generate_glossary_from_samples(
+                        samples,
+                        self.glossary,
+                        min_entries=min_entries,
+                        max_entries=max_entries,
+                    )
+                    self.glossary.save(self.book_dir)
+                    self.engine.glossary = self.glossary
+                    
+                    # Update stats for Live display
+                    self.stats.glossary_count = len(self.glossary)
+                    self.stats.status_message = "Glossary generated"
+                
+                # SUCCESS: Now set the flag and signal (Solution 4 fix)
+                self._glossary_generated = True
+                self._glossary_version = 1
+                self._glossary_ready_event.set()
+                
+            except Exception as e:
+                # FAILURE: Don't set flag - let another worker retry
+                console.print(f"[red]Glossary generation failed: {e}[/red]")
+                console.print("[yellow]Another worker will retry...[/yellow]")
+                # Don't set self._glossary_generated = True
+    
+    async def _wait_for_glossary_or_shutdown(self) -> bool:
+        """Wait for either glossary ready or shutdown signal.
+        
+        Returns:
+            True if glossary is ready, False if shutdown requested
+        """
+        glossary_task = asyncio.create_task(self._glossary_ready_event.wait())
+        shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+        
+        done, pending = await asyncio.wait(
+            [glossary_task, shutdown_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        # Cancel pending tasks
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        
+        # Return True if glossary ready, False if shutdown
+        return glossary_task in done
+    
+    async def _run_batch_extraction(self) -> None:
+        """Extract terms from pending chapters in one batch.
+        
+        Called periodically by batch extraction task.
+        Single version increment per batch to reduce sync overhead.
+        """
+        from dich_truyen.translator.glossary import extract_new_terms_from_chapter
+        
+        async with self._glossary_lock:
+            if not self._pending_extraction_paths or not self.glossary:
+                return
             
-            # Read samples
-            samples = []
-            for f in sample_files:
+            paths_to_process = self._pending_extraction_paths.copy()
+            self._pending_extraction_paths.clear()
+        
+        # Process outside lock to reduce contention
+        all_new_terms = []
+        for path in paths_to_process:
+            try:
+                content = path.read_text(encoding="utf-8")
+                terms = await extract_new_terms_from_chapter(
+                    content, self.glossary, max_new_terms=3
+                )
+                all_new_terms.extend(terms)
+            except Exception:
+                pass  # Skip errors, non-blocking
+        
+        if not all_new_terms:
+            return
+        
+        # Deduplicate and add under lock
+        async with self._glossary_lock:
+            added_count = 0
+            seen = set()
+            for term in all_new_terms:
+                if term.chinese not in seen and term.chinese not in self.glossary:
+                    self.glossary.add(term)
+                    seen.add(term.chinese)
+                    added_count += 1
+            
+            if added_count > 0:
+                self._glossary_version += 1
+                self.glossary.save(self.book_dir)
+                self.stats.glossary_count = len(self.glossary)
+                self.stats.status_message = f"+{added_count} terms extracted"
+                
+                # Rebuild TF-IDF scorer periodically
+                await self._maybe_rebuild_scorer()
+    
+    async def _maybe_rebuild_scorer(self) -> None:
+        """Rebuild TF-IDF scorer if version threshold reached."""
+        version_delta = self._glossary_version - self._last_scorer_rebuild_version
+        if version_delta < self.config.glossary_scorer_rebuild_threshold:
+            return
+        
+        if not self.engine or not self.glossary:
+            return
+        
+        raw_dir = self.book_dir / "raw"
+        if not raw_dir.exists():
+            return
+        
+        try:
+            from dich_truyen.translator.term_scorer import SimpleTermScorer
+            
+            documents = []
+            for txt_file in sorted(raw_dir.glob("*.txt")):
                 try:
-                    content = f.read_text(encoding="utf-8")
-                    samples.append(content[:sample_size])
+                    documents.append(txt_file.read_text(encoding="utf-8"))
                 except Exception:
                     pass
             
-            if samples:
-                # Create glossary if needed
-                if not self.glossary:
-                    self.glossary = Glossary.load_or_create(self.book_dir)
-                    self.engine.glossary = self.glossary
-                
-                # Generate
-                self.glossary = await generate_glossary_from_samples(
-                    samples,
-                    self.glossary,
-                    min_entries=min_entries,
-                    max_entries=max_entries,
+            if documents:
+                terms = [entry.chinese for entry in self.glossary.entries]
+                new_scorer = SimpleTermScorer()
+                new_scorer.fit(documents, terms)
+                self.engine.term_scorer = new_scorer
+                self._last_scorer_rebuild_version = self._glossary_version
+        except Exception:
+            pass  # Non-blocking, scorer update is optional
+    
+    async def _batch_extraction_task(self) -> None:
+        """Background task: batch extract terms periodically.
+        
+        Runs every glossary_batch_interval seconds.
+        Stops when shutdown event is set.
+        """
+        while not self._shutdown_event.is_set():
+            try:
+                # Wait for interval or shutdown
+                await asyncio.wait_for(
+                    self._shutdown_event.wait(),
+                    timeout=self.config.glossary_batch_interval
                 )
-                self.glossary.save(self.book_dir)
-                self.engine.glossary = self.glossary
-                # Update stats for Live display
-                self.stats.glossary_count = len(self.glossary)
-                self.stats.status_message = "Glossary generated"
+                break  # Shutdown requested
+            except asyncio.TimeoutError:
+                pass  # Normal timeout, run extraction
+            
+            await self._run_batch_extraction()
+        
+        # Final flush on shutdown
+        await self._run_batch_extraction()
+
