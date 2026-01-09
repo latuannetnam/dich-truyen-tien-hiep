@@ -172,9 +172,19 @@ class StreamingPipeline:
         
         # Analyze state for resume
         if force:
-            # Reset all chapters to PENDING
+            # Determine reset target based on mode
+            # If no URL (translate-only), reset to CRAWLED to skip crawl but force re-translate
+            # If URL provided, reset to PENDING to re-crawl and re-translate
+            reset_to = ChapterStatus.CRAWLED if url is None else ChapterStatus.PENDING
             for c in chapters:
-                c.status = ChapterStatus.PENDING
+                # Only reset if raw file exists when targeting CRAWLED
+                if reset_to == ChapterStatus.CRAWLED:
+                    raw_files = list((self.book_dir / "raw").glob(f"{c.index:04d}_*.txt"))
+                    if raw_files:
+                        c.status = ChapterStatus.CRAWLED
+                    # If no raw file, leave as PENDING (needs crawl)
+                else:
+                    c.status = ChapterStatus.PENDING
             self.progress.save(self.book_dir)
         
         to_crawl = [c for c in chapters if c.status == ChapterStatus.PENDING]
