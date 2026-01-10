@@ -130,7 +130,7 @@ class LLMClient:
             parts.append(f"## Bảng thuật ngữ (BẮT BUỘC sử dụng)\n{glossary_prompt}\n")
 
         if context:
-            parts.append(f"## Ngữ cảnh trước đó\n{context}\n")
+            parts.append(f"## Bản dịch đoạn trước (tham khảo để giữ mạch văn)\n{context}\n")
 
         parts.append(f"## Văn bản cần dịch\n{text}")
 

@@ -39,8 +39,7 @@ class TranslationConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TRANSLATION_")
 
     chunk_size: int = Field(default=2000, description="Characters per translation chunk")
-    chunk_overlap: int = Field(default=300, description="Overlap characters for context in parallel mode")
-    concurrent_requests: int = Field(default=1, description="Concurrent translation requests")
+    chunk_overlap: int = Field(default=300, description="Overlap characters for context")
     progressive_glossary: bool = Field(default=True, description="Extract new terms during translation")
     
     # Glossary generation settings

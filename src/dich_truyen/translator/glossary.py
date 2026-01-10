@@ -247,7 +247,10 @@ class Glossary:
 
                 lines.append(f"### {category_name}")
                 for entry in category_entries:
-                    lines.append(f"- {entry.chinese} → {entry.vietnamese}")
+                    if entry.notes:
+                        lines.append(f"- {entry.chinese} → {entry.vietnamese} ({entry.notes})")
+                    else:
+                        lines.append(f"- {entry.chinese} → {entry.vietnamese}")
                 lines.append("")
 
         return "\n".join(lines)

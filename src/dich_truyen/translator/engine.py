@@ -299,12 +299,15 @@ class TranslationEngine:
         output_path: Path,
         progress_callback=None,
     ) -> str:
-        """Translate an entire chapter file using parallel chunk processing.
+        """Translate an entire chapter file using sequential chunk processing.
+        
+        Each chunk uses the TRANSLATED Vietnamese output from the previous chunk
+        as context, improving pronoun resolution and term consistency.
 
         Args:
             chapter_path: Path to source chapter file
             output_path: Path to save translated chapter
-            progress_callback: Optional callback for progress updates (chunk_idx, total_chunks)
+            progress_callback: Optional callback for progress updates (chunk_idx, total_chunks, status)
 
         Returns:
             Translated chapter content
@@ -313,58 +316,37 @@ class TranslationEngine:
         with open(chapter_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Create chunks with context
-        chunks_with_context = self.create_chunks_with_context(content)
-        total_chunks = len(chunks_with_context)
+        # Split into chunks
+        chunks = self.chunk_text(content)
+        total_chunks = len(chunks)
         
         if total_chunks == 0:
             return ""
 
-        # Use semaphore to limit concurrent requests
-        semaphore = asyncio.Semaphore(self.config.concurrent_requests)
-        completed_count = 0
-        active_chunks = set()  # Track which chunks are currently being translated
-        completed_lock = asyncio.Lock()
+        translated_chunks = []
+        overlap = self.config.chunk_overlap
 
-        async def translate_with_limit(chunk_data: dict, index: int) -> tuple[int, str]:
-            """Translate a chunk with concurrency limit."""
-            nonlocal completed_count
-            
-            async with semaphore:
-                # Mark chunk as active
-                async with completed_lock:
-                    active_chunks.add(index + 1)
-                    active_str = ",".join(str(c) for c in sorted(active_chunks))
-                    if progress_callback:
-                        progress_callback(completed_count, total_chunks, f"translating [{active_str}]")
-                
-                translated = await self.translate_chunk_with_context_marker(
-                    main_text=chunk_data["main_text"],
-                    context_text=chunk_data["context_text"],
-                )
-                
-                # Update progress after completion
-                async with completed_lock:
-                    active_chunks.discard(index + 1)
-                    completed_count += 1
-                    active_str = ",".join(str(c) for c in sorted(active_chunks)) if active_chunks else "done"
-                    if progress_callback:
-                        progress_callback(completed_count, total_chunks, f"[{active_str}]")
-                
-                return (index, translated)
+        # Process chunks sequentially to use translated output as context
+        for idx, chunk in enumerate(chunks):
+            if progress_callback:
+                progress_callback(idx, total_chunks, f"translating [{idx + 1}]")
 
-        # Create all translation tasks
-        tasks = [
-            translate_with_limit(chunk_data, idx)
-            for idx, chunk_data in enumerate(chunks_with_context)
-        ]
+            # Use TRANSLATED Vietnamese from previous chunk as context (Solution 1)
+            if idx == 0:
+                context_text = None
+            else:
+                prev_translated = translated_chunks[-1]
+                # Take last 'overlap' characters as context
+                context_text = prev_translated[-overlap:] if len(prev_translated) > overlap else prev_translated
 
-        # Execute all tasks in parallel (limited by semaphore)
-        results = await asyncio.gather(*tasks)
+            translated = await self.translate_chunk_with_context_marker(
+                main_text=chunk,
+                context_text=context_text,
+            )
+            translated_chunks.append(translated)
 
-        # Sort by index to maintain order
-        results.sort(key=lambda x: x[0])
-        translated_chunks = [result[1] for result in results]
+        if progress_callback:
+            progress_callback(total_chunks, total_chunks, "[done]")
 
         # Combine translated chunks
         result = "\n\n".join(translated_chunks)
