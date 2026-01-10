@@ -42,6 +42,11 @@ class TranslationConfig(BaseSettings):
     chunk_overlap: int = Field(default=300, description="Overlap characters for context")
     progressive_glossary: bool = Field(default=True, description="Extract new terms during translation")
     
+    # Quality enhancement features
+    enable_glossary_annotation: bool = Field(default=True, description="Annotate source text with glossary terms")
+    enable_state_tracking: bool = Field(default=True, description="Track narrative state across chunks")
+    state_tracking_max_retries: int = Field(default=2, description="Max retries for state extraction before disabling")
+    
     # Glossary generation settings
     glossary_sample_chapters: int = Field(default=5, description="Number of chapters to sample for glossary")
     glossary_sample_size: int = Field(default=3000, description="Characters to take from each sample chapter")

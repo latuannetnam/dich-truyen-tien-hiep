@@ -84,6 +84,7 @@ class LLMClient:
         style_prompt: str,
         glossary_prompt: str = "",
         context: Optional[str] = None,
+        narrative_state: Optional[dict] = None,
     ) -> str:
         """Translate text from Chinese to Vietnamese.
 
@@ -92,20 +93,21 @@ class LLMClient:
             style_prompt: Style guidelines for translation
             glossary_prompt: Glossary terms to use
             context: Previous context for continuity
+            narrative_state: Optional narrative state (speaker, pronouns) from previous chunk
 
         Returns:
             Translated Vietnamese text
         """
-        system_prompt = self._build_translation_system_prompt(style_prompt)
+        system_prompt = self._build_translation_system_prompt(style_prompt, narrative_state)
         user_prompt = self._build_translation_user_prompt(
             text, glossary_prompt, context
         )
 
         return await self.complete(system_prompt, user_prompt)
 
-    def _build_translation_system_prompt(self, style_prompt: str) -> str:
+    def _build_translation_system_prompt(self, style_prompt: str, narrative_state: Optional[dict] = None) -> str:
         """Build the system prompt for translation."""
-        return f"""Bạn là dịch giả chuyên nghiệp chuyên dịch tiểu thuyết Trung Quốc sang tiếng Việt.
+        base_prompt = f"""Bạn là dịch giả chuyên nghiệp chuyên dịch tiểu thuyết Trung Quốc sang tiếng Việt.
 
 ## Phong cách dịch thuật
 {style_prompt}
@@ -115,7 +117,30 @@ class LLMClient:
 - Sử dụng ngôn ngữ tiếng Việt tự nhiên, mượt mà
 - Giữ nguyên cấu trúc đoạn văn
 - KHÔNG thêm giải thích hay chú thích
-- CHỈ trả về bản dịch, không có gì khác"""
+- Các thuật ngữ có dạng `中文<Tiếng Việt>` PHẢI dịch đúng như trong ngoặc nhọn
+- Giữ nguyên bản dịch đã chỉ định, KHÔNG sửa đổi"""
+
+        # Add state tracking instructions if state is provided
+        if narrative_state:
+            speaker = narrative_state.get("speaker", "")
+            pronouns = narrative_state.get("pronouns", {})
+            
+            state_info = "\n\n## Trạng thái trước đó (giữ nhất quán)"
+            if speaker:
+                state_info += f"\n- Người đang nói: {speaker}"
+            if pronouns:
+                pronoun_list = ", ".join([f"{cn}→{vi}" for cn, vi in pronouns.items()])
+                state_info += f"\n- Đại từ: {pronoun_list}"
+            
+            base_prompt += state_info
+        
+        # Add state output request
+        base_prompt += """\n\n## Đầu ra
+- Trả về CHÍNH XÁC bản dịch
+- Sau đó thêm dòng `---STATE---` và JSON:
+  {"speaker": "tên người đang nói", "pronouns": {"Tên_CN": "đại_từ_VN"}}"""
+        
+        return base_prompt
 
     def _build_translation_user_prompt(
         self,

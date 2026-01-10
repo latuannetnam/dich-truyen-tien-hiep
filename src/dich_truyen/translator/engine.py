@@ -185,6 +185,82 @@ class TranslationEngine:
 
         return chunks
 
+    def annotate_with_glossary(self, text: str, max_terms: int = 30) -> str:
+        """Annotate source text with glossary translations inline.
+        
+        Inserts glossary terms in format: 叶凡<Diệp Phàm>
+        This enforces exact term usage by the LLM.
+        
+        Args:
+            text: Source Chinese text to annotate
+            max_terms: Maximum number of terms to annotate (most relevant)
+            
+        Returns:
+            Annotated text with <Term> tags
+        """
+        if not self.glossary or len(self.glossary) == 0:
+            return text
+        
+        # Get relevant terms for this text using TF-IDF scorer if available
+        relevant_entries = self.glossary.get_relevant_entries(
+            text, 
+            scorer=self.term_scorer,
+            max_entries=max_terms
+        )
+        
+        if not relevant_entries:
+            return text
+        
+        # Sort by length descending to prioritize longer terms (避免部分匹配)
+        relevant_entries.sort(key=lambda e: -len(e.chinese))
+        
+        # Apply annotations with word boundaries
+        for entry in relevant_entries:
+            # Use whole-word boundary to avoid partial matches
+            # (?<![...]) negative lookbehind: not preceded by letter/hanzi
+            # (?![...]) negative lookahead: not followed by letter/hanzi
+            pattern = re.compile(
+                rf'(?<![a-zA-Z\u4e00-\u9fff])({re.escape(entry.chinese)})(?![a-zA-Z\u4e00-\u9fff])'
+            )
+            # Replace up to 5 occurrences per term to avoid bloat
+            text = pattern.sub(rf'\1<{entry.vietnamese}>', text, count=5)
+        
+        return text
+
+    def extract_state(self, response: str) -> tuple[str, dict]:
+        """Extract translation and narrative state from LLM response.
+        
+        Parses the ---STATE--- marker and JSON block from the response.
+        Falls back to empty state on parse errors.
+        
+        Args:
+            response: LLM response text with optional state block
+            
+        Returns:
+            Tuple of (translation_text, state_dict)
+        """
+        if "---STATE---" not in response:
+            return response.strip(), {}
+        
+        try:
+            parts = response.split("---STATE---", 1)
+            translation = parts[0].strip()
+            state_json = parts[1].strip()
+            
+            # Parse JSON robustly
+            import json
+            state = json.loads(state_json)
+            
+            # Validate state structure (optional fields)
+            if not isinstance(state, dict):
+                return translation, {}
+            
+            return translation, state
+            
+        except (json.JSONDecodeError, IndexError, Exception):
+            # Fallback: return full response with empty state
+            return response.strip(), {}
+
     async def translate_chunk(
         self,
         chunk: str,
@@ -223,12 +299,14 @@ class TranslationEngine:
         self,
         main_text: str,
         context_text: Optional[str] = None,
+        narrative_state: Optional[dict] = None,
     ) -> str:
         """Translate text with a context portion that should not be included in output.
 
         Args:
             main_text: The main text to translate (this will be in the output)
             context_text: Context from previous portion (not included in output)
+            narrative_state: Optional narrative state (speaker, pronouns) from previous chunk
 
         Returns:
             Translated main text only
@@ -252,13 +330,15 @@ class TranslationEngine:
                 text=main_text,
                 style_prompt=style_prompt,
                 glossary_prompt=glossary_prompt,
-                context=context_text,  # Chinese context for reference
+                context=context_text,  # Vietnamese context for reference
+                narrative_state=narrative_state,
             )
         else:
             return await self.llm.translate(
                 text=main_text,
                 style_prompt=style_prompt,
                 glossary_prompt=glossary_prompt,
+                narrative_state=narrative_state,
             )
 
     def create_chunks_with_context(self, text: str) -> list[dict]:
@@ -325,13 +405,22 @@ class TranslationEngine:
 
         translated_chunks = []
         overlap = self.config.chunk_overlap
+        
+        # State tracking variables
+        current_state = {}  # Narrative state from previous chunk
+        state_extraction_failures = 0  # Counter for failed state extractions
+        state_tracking_enabled = self.config.enable_state_tracking  # Can be disabled mid-chapter
 
         # Process chunks sequentially to use translated output as context
         for idx, chunk in enumerate(chunks):
             if progress_callback:
                 progress_callback(idx, total_chunks, f"translating [{idx + 1}]")
 
-            # Use TRANSLATED Vietnamese from previous chunk as context (Solution 1)
+            # SOLUTION 1: Annotate with glossary terms if enabled
+            if self.config.enable_glossary_annotation:
+                chunk = self.annotate_with_glossary(chunk, max_terms=30)
+            
+            # Build context from previous chunk
             if idx == 0:
                 context_text = None
             else:
@@ -339,10 +428,34 @@ class TranslationEngine:
                 # Take last 'overlap' characters as context
                 context_text = prev_translated[-overlap:] if len(prev_translated) > overlap else prev_translated
 
-            translated = await self.translate_chunk_with_context_marker(
+            # SOLUTION 2: Inject state into translation call if enabled and available
+            response = await self.translate_chunk_with_context_marker(
                 main_text=chunk,
                 context_text=context_text,
+                narrative_state=current_state if state_tracking_enabled else None,
             )
+            
+            # Extract translation and state
+            if state_tracking_enabled:
+                translated, new_state = self.extract_state(response)
+                
+                # Check if state extraction succeeded
+                if new_state:
+                    current_state = new_state
+                    state_extraction_failures = 0  # Reset counter on success
+                else:
+                    state_extraction_failures += 1
+                    # Disable state tracking for this chapter after max retries
+                    if state_extraction_failures >= self.config.state_tracking_max_retries:
+                        state_tracking_enabled = False
+                        current_state = {}
+            else:
+                translated = response
+            
+            # Reset state on scene breaks (detected by horizontal rules)
+            if state_tracking_enabled and "---" in chunk and idx > 0:
+                current_state = {}
+            
             translated_chunks.append(translated)
 
         if progress_callback:
