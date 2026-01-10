@@ -225,24 +225,36 @@ examples:
 └──────────────────────────────────────────────────────────┘
 ```
 
-#### Progressive Glossary Building
+#### Progressive Glossary Building (Batch Mode)
 
-New terms are extracted during translation to build glossary incrementally:
+New terms are extracted during translation and processed in the background to minimize overhead:
 
 ```
-Ch.1 translated...
-  +2 new glossary terms (刘羡阳 → Lưu Tiện Dương)
-Ch.2 translated...
-  +1 new glossary terms (宁姚 → Ninh Diêu)
+Translator Worker
+       │
+       ▼ (queues path)
+[Pending Extraction Paths]
+       │
+       ▼ (Background Task)
+Batch Extraction (every 60s)
+       │
+       ▼ (Extracts & Deduplicates)
+Update Glossary (Thread-safe Lock)
+       │
+       ▼
+Glossary Version++
+Term Scorer Rebuild (if needed)
 ```
 
 ```python
-# After each chapter translation (if TRANSLATION_PROGRESSIVE_GLOSSARY=true):
-new_terms = await extract_new_terms_from_chapter(
-    chinese_text, existing_glossary, max_new_terms=3
-)
-glossary.add(new_terms)
-glossary.save(book_dir)  # Auto-save after each chapter
+# In TranslationWorker:
+self._pending_extraction_paths.append(source_path)
+
+# In Background Task:
+new_terms = await extract_new_terms_from_chapter(content)
+async with self._glossary_lock:
+    glossary.add(new_terms)
+    glossary.save()
 ```
 
 #### TF-IDF Based Glossary Selection
@@ -305,28 +317,26 @@ Behavior:
 - Short narration (<100 chars) between dialogues stays in block
 - Allow 20% chunk overflow to avoid splitting conversations
 
-### Parallel Chunk Translation
+### Sequential Chunk Translation with Context
 
-Large chapters are split into chunks and translated **in parallel** for speed:
+Chapters are split into chunks but translated **sequentially** to maximize translation quality:
 
 ```
 Chapter Text:  [====Chunk1====][====Chunk2====][====Chunk3====]
                       ↓              ↓              ↓
-Context:           (none)    ←300 chars→    ←300 chars→
+Processing:        Fast           Normal         Normal
                       ↓              ↓              ↓
-               ┌─────────────────────────────────────────┐
-               │   Parallel Translation (semaphore)      │
-               │   TRANSLATION_CONCURRENT_REQUESTS=3     │
-               └─────────────────────────────────────────┘
+Context:           (none)      [Trans-Chunk1] [Trans-Chunk2]
+                                (Last 300 chars) (Last 300 chars)
                       ↓              ↓              ↓
-Output:        [==Trans1==] + [==Trans2==] + [==Trans3==]
+Output:        [==Trans1==] → [==Trans2==] → [==Trans3==]
 ```
 
 **Key design decisions:**
-- Context uses **source Chinese** text (not translated output) to enable parallel processing
-- Each chunk receives ~300 chars from previous chunk for narrative continuity
-- Semaphore limits concurrent API calls to respect rate limits
-- Results sorted by index to maintain correct order
+- **Sequential Processing**: Chunks are translated one by one.
+- **Translated Context**: Each chunk receives the *translated Vietnamese* output of the previous chunk as context.
+- **Benefit**: Drastically improves pronoun resolution (ta/ngươi/hắn) and terminological consistency compared to parallel translation.
+- **Performance**: Chapter-level parallelism (multiple workers processing different chapters) maintains high overall throughput.
 
 ### Translation Prompt Structure
 
@@ -351,8 +361,8 @@ Output:        [==Trans1==] + [==Trans2==] + [==Trans3==]
 │ Glossary (mandatory terms):             │
 │ - 陈平安 → Trần Bình An                  │
 │                                         │
-│ Context (from previous chunk):          │
-│ "...last 300 chars of Chinese source..."│
+│ Context (from previous chunk's output): │
+│ "...người thiếu niên đeo kiếm..."       │
 │                                         │
 │ Text to translate:                      │
 │ [current chunk content]                 │
