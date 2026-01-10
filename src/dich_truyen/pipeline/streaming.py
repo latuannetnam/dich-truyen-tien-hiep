@@ -101,6 +101,7 @@ class StreamingPipeline:
         self.downloader: Optional["ChapterDownloader"] = None
         self.engine: Optional["TranslationEngine"] = None
         self.glossary: Optional["Glossary"] = None
+        self.style = None  # StyleTemplate for glossary generation
         
         # Control flags
         self._crawl_complete = asyncio.Event()
@@ -226,6 +227,7 @@ class StreamingPipeline:
             auto_glossary=auto_glossary and has_raw_files,  # Only generate NOW if raw files exist
         )
         self.glossary = self.engine.glossary
+        self.style = self.engine.style  # Capture style for glossary generation
         
         # Reload progress to get translated metadata (setup_translation updates it)
         self.progress = BookProgress.load(self.book_dir)
@@ -676,7 +678,7 @@ class StreamingPipeline:
                 chapter_content = f.read()
             
             new_terms = await extract_new_terms_from_chapter(
-                chapter_content, self.glossary, max_new_terms=3
+                chapter_content, self.glossary, style=self.style, max_new_terms=3
             )
             
             if new_terms:
@@ -770,7 +772,8 @@ class StreamingPipeline:
                     # Generate
                     self.glossary = await generate_glossary_from_samples(
                         samples,
-                        self.glossary,
+                        style=self.style,
+                        existing_glossary=self.glossary,
                         min_entries=min_entries,
                         max_entries=max_entries,
                     )

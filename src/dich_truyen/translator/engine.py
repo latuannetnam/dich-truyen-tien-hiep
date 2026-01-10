@@ -707,8 +707,9 @@ async def setup_translation(
 
         if samples:
             glossary = await generate_glossary_from_samples(
-                samples, 
-                glossary,
+                samples,
+                style=style,
+                existing_glossary=glossary,
                 min_entries=min_entries,
                 max_entries=max_entries,
             )

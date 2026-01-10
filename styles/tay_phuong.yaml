@@ -1,0 +1,55 @@
+name: western_fantasy_magic
+description: Phong cách dịch thuật tiểu thuyết Huyền huyễn/ma pháp phương Tây, linh
+  hoạt trong việc dịch tên nhân vật theo nguồn gốc, giữ nguyên không khí kỳ ảo.
+guidelines:
+- "Dịch tên nhân vật theo nguồn gốc: Tên phương Tây (Lucien, Evans, Simon, Joel) giữ
+  nguyên tiếng Anh; Tên có gốc Hán (艾丽萨, 艾文, 夏风) dịch phiên âm Hán-Việt (Ái
+  Lệ Tát, Ái Văn, Hạ Phong)."
+- "Dịch chức danh, cấp bậc sang tiếng Việt: Knight → Kỵ sĩ, Squire → Thị tùng, Guard
+  → Vệ binh, Sir → Ngài/Tước sĩ, Bishop → Giám mục."
+- "Dịch thuật ngữ vật phẩm sang tiếng Việt: Pyre → Giàn thiêu, Chainmail → Giáp xích,
+  Badge → Huy chương, Robe → Áo bào, Cross → Thập tự."
+- "Địa danh phương Tây: Giữ nguyên tên riêng + dịch loại hình. Ví dụ: Aderan Church
+  → Nhà thờ Aderan, Church Square → Quảng trường Nhà thờ."
+- "Thuật ngữ ma pháp giữ Hán-Việt hoặc dịch nghĩa: 魔法 → ma pháp, 圣光 → Thánh
+  quang, 天国 → Thiên quốc."
+- Sử dụng cấu trúc câu trang trọng, mạch lạc, phù hợp với không khí thần thoại.
+- Tránh dùng từ thuần Việt hiện đại, ưu tiên từ Hán-Việt hoặc từ có sắc thái cổ điển.
+vocabulary:
+  魔法: ma pháp
+  魔导师: Ma đạo sư
+  精灵: Tinh linh
+  骑士: Kỵ sĩ
+  龙: Long
+  王国: Vương quốc
+  圣殿: Thánh điện
+  黑暗: Bóng tối
+  契约: Khế ước
+  元素: Nguyên tố
+  魔兽: Ma thú
+  祭司: Tế tư
+  法阵: Pháp trận
+  神器: Thần khí
+  勇者: Dũng giả
+  女巫: Nữ phù thủy
+  火刑架: Giàn thiêu
+  教堂: Nhà thờ
+  广场: Quảng trường
+  守卫: Vệ binh
+  白袍: Bạch bào
+  黑袍: Hắc bào
+  十字架: Thập tự giá
+  徽章: Huy chương
+  锁子甲: Giáp xích
+  见习骑士侍从: Kỵ sĩ tập sự
+tone: formal
+examples:
+- chinese: 见习骑士侍从西蒙来到教堂广场。
+  vietnamese: Kỵ sĩ tập sự Simon đến Quảng trường Nhà thờ.
+- chinese: 维恩爵士派人去善堂请医生。
+  vietnamese: Ngài Wayne phái người đến Thiện đường mời thầy thuốc.
+- chinese: 穿着白袍的祭司手持徽章走上台阶。
+  vietnamese: Vị tế tư khoác bạch bào tay cầm huy chương bước lên bậc thang.
+- chinese: 守卫们穿着锁子甲守护着火刑架。
+  vietnamese: Các vệ binh mặc giáp xích canh giữ giàn thiêu.
+

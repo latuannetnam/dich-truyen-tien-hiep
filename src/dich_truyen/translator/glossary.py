@@ -7,6 +7,7 @@ from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from dich_truyen.translator.term_scorer import TermScorer
+    from dich_truyen.translator.style import StyleTemplate
 
 from pydantic import BaseModel, Field
 from rich.console import Console
@@ -357,9 +358,11 @@ Trích xuất TỐI THIỂU {min_entries} thuật ngữ theo danh mục:
 5. **item** - Vật phẩm/Pháp bảo (法宝/神器)
 6. **organization** - Môn phái/Thế lực (门派/势力)
 
+{character_naming_rule}
+
 Với mỗi thuật ngữ, cung cấp:
 - Tiếng Trung gốc
-- Bản dịch tiếng Việt (ưu tiên Hán-Việt cho tên riêng)
+- Bản dịch tiếng Việt
 - Danh mục
 - Ghi chú (nếu cần)
 
@@ -373,6 +376,7 @@ Trả về CHÍNH XÁC JSON array, không có markdown:
 
 async def generate_glossary_from_samples(
     sample_texts: list[str],
+    style: Optional["StyleTemplate"] = None,
     existing_glossary: Optional[Glossary] = None,
     min_entries: int = 20,
     max_entries: int = 100,
@@ -383,6 +387,7 @@ async def generate_glossary_from_samples(
 
     Args:
         sample_texts: List of sample text excerpts
+        style: Optional style template for naming conventions
         existing_glossary: Existing glossary to merge with
         min_entries: Minimum number of entries to request per batch
         max_entries: Maximum entries to keep in final glossary
@@ -394,6 +399,9 @@ async def generate_glossary_from_samples(
     import re
 
     llm = LLMClient()
+    
+    # Determine character naming rule based on style
+    character_naming_rule = _get_character_naming_rule(style)
     
     # Process samples in batches of 5 to avoid token limits
     BATCH_SIZE = 5
@@ -417,6 +425,7 @@ async def generate_glossary_from_samples(
         prompt = GLOSSARY_GENERATION_PROMPT.format(
             sample_texts=combined,
             min_entries=entries_per_batch,
+            character_naming_rule=character_naming_rule,
         )
 
         try:
@@ -481,6 +490,8 @@ Chỉ trích xuất các thuật ngữ QUAN TRỌNG và MỚI (không có trong 
 - Môn phái, tổ chức mới (organization)
 - Cảnh giới, pháp bảo quan trọng (realm, item, technique)
 
+{character_naming_rule}
+
 Chỉ trả về 3-5 thuật ngữ quan trọng nhất. Nếu không có thuật ngữ mới quan trọng, trả về [].
 
 ## Định dạng trả về
@@ -493,6 +504,7 @@ JSON array:
 async def extract_new_terms_from_chapter(
     chinese_text: str,
     existing_glossary: Glossary,
+    style: Optional["StyleTemplate"] = None,
     max_new_terms: int = 5,
 ) -> list[GlossaryEntry]:
     """Extract new important terms from a chapter that aren't in the glossary.
@@ -502,6 +514,7 @@ async def extract_new_terms_from_chapter(
     Args:
         chinese_text: Chinese text to analyze (typically first 2000 chars of chapter)
         existing_glossary: Current glossary to avoid duplicates
+        style: Optional style template for naming conventions
         max_new_terms: Maximum new terms to extract per chapter
 
     Returns:
@@ -519,10 +532,14 @@ async def extract_new_terms_from_chapter(
         existing_terms = "(chưa có)"
 
     llm = LLMClient()
+    
+    # Get character naming rule based on style
+    character_naming_rule = _get_character_naming_rule(style)
 
     prompt = PROGRESSIVE_GLOSSARY_PROMPT.format(
         existing_terms=existing_terms,
         text=text_sample,
+        character_naming_rule=character_naming_rule,
     )
 
     try:
@@ -548,3 +565,35 @@ async def extract_new_terms_from_chapter(
         pass  # Silently fail - progressive glossary is optional enhancement
 
     return []
+
+
+def _get_character_naming_rule(style: Optional["StyleTemplate"]) -> str:
+    """Extract character naming rule from style template.
+    
+    Args:
+        style: Style template with guidelines
+        
+    Returns:
+        Formatted character naming rule for LLM prompt
+    """
+    if not style or not style.guidelines:
+        # Default: use Sino-Vietnamese for xianxia/wuxia genres
+        return "**Quy tắc dịch tên**: Dịch tên nhân vật và địa danh theo phiên âm Hán-Việt (ví dụ: 陈平安 → Trần Bình An)."
+    
+    # Extract naming-related guidelines from style
+    naming_rules = []
+    keywords = ["tên", "nhân vật", "địa danh", "chức danh", "vật phẩm", "name", "character"]
+    
+    for guideline in style.guidelines:
+        guideline_lower = guideline.lower()
+        if any(kw in guideline_lower for kw in keywords):
+            naming_rules.append(guideline)
+    
+    if naming_rules:
+        # Use actual guidelines from style
+        rules_text = "\n".join(f"- {rule}" for rule in naming_rules[:5])  # Limit to 5 rules
+        return f"**Quy tắc dịch tên từ style '{style.name}':**\n{rules_text}"
+    
+    # Fallback to default Sino-Vietnamese
+    return "**Quy tắc dịch tên**: Dịch tên nhân vật và địa danh theo phiên âm Hán-Việt (ví dụ: 陈平安 → Trần Bình An)."
+
