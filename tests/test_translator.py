@@ -18,8 +18,16 @@ from dich_truyen.translator.style import (
     KIEM_HIEP_STYLE,
 )
 from dich_truyen.translator.engine import TranslationEngine
-from dich_truyen.translator.llm import LLMClient
-from dich_truyen.config import LLMConfig, TranslationConfig
+from dich_truyen.translator.llm import LLMClient, TaskType
+from dich_truyen.config import (
+    LLMConfig,
+    TranslationConfig,
+    CrawlerLLMConfig,
+    GlossaryLLMConfig,
+    TranslatorLLMConfig,
+    AppConfig,
+    get_effective_llm_config,
+)
 
 # Check if OpenAI API is configured for integration tests
 def _has_openai_api():
@@ -404,3 +412,236 @@ class TestTranslationIntegration:
 
         glossary = await generate_glossary_from_samples(samples)
         assert len(glossary) > 0
+
+
+class TestMultiModelConfig:
+    """Tests for multi-model LLM configuration."""
+
+    def test_task_specific_config_classes_exist(self):
+        """Test that task-specific config classes can be instantiated."""
+        crawler_config = CrawlerLLMConfig()
+        glossary_config = GlossaryLLMConfig()
+        translator_config = TranslatorLLMConfig()
+        
+        # All should have default empty values
+        assert crawler_config.api_key == ""
+        assert crawler_config.model == ""
+        assert glossary_config.api_key == ""
+        assert glossary_config.model == ""
+        assert translator_config.api_key == ""
+        assert translator_config.model == ""
+
+    def test_get_effective_llm_config_uses_fallback(self):
+        """Test that get_effective_llm_config falls back to default config."""
+        fallback = LLMConfig(
+            api_key="fallback-key",
+            base_url="https://fallback.com/v1",
+            model="fallback-model",
+            max_tokens=1000,
+            temperature=0.5,
+        )
+        
+        # Empty specific config - should use all fallback values
+        specific = CrawlerLLMConfig()
+        
+        effective = get_effective_llm_config(specific, fallback)
+        
+        assert effective.api_key == "fallback-key"
+        assert effective.base_url == "https://fallback.com/v1"
+        assert effective.model == "fallback-model"
+        assert effective.max_tokens == 1000
+        assert effective.temperature == 0.5
+
+    def test_get_effective_llm_config_overrides_fallback(self):
+        """Test that specific config values override fallback."""
+        fallback = LLMConfig(
+            api_key="fallback-key",
+            base_url="https://fallback.com/v1",
+            model="fallback-model",
+            max_tokens=1000,
+            temperature=0.5,
+        )
+        
+        # Specific config with some values set
+        specific = CrawlerLLMConfig(
+            api_key="specific-key",
+            model="specific-model",
+            temperature=0.1,
+        )
+        
+        effective = get_effective_llm_config(specific, fallback)
+        
+        # Overridden values
+        assert effective.api_key == "specific-key"
+        assert effective.model == "specific-model"
+        assert effective.temperature == 0.1
+        
+        # Fallback values (not set in specific)
+        assert effective.base_url == "https://fallback.com/v1"
+        assert effective.max_tokens == 1000
+
+    def test_get_effective_llm_config_partial_override(self):
+        """Test partial override of config values."""
+        fallback = LLMConfig(
+            api_key="fallback-key",
+            base_url="https://fallback.com/v1",
+            model="gpt-4o",
+            max_tokens=4096,
+            temperature=0.7,
+        )
+        
+        # Only override the model
+        specific = GlossaryLLMConfig(model="gpt-4o-mini")
+        
+        effective = get_effective_llm_config(specific, fallback)
+        
+        assert effective.model == "gpt-4o-mini"
+        assert effective.api_key == "fallback-key"
+        assert effective.base_url == "https://fallback.com/v1"
+        assert effective.max_tokens == 4096
+        assert effective.temperature == 0.7
+
+    def test_llm_client_with_explicit_config(self):
+        """Test LLMClient uses explicit config when provided."""
+        config = LLMConfig(
+            api_key="explicit-key",
+            model="explicit-model",
+        )
+        
+        client = LLMClient(config=config)
+        
+        assert client.config.api_key == "explicit-key"
+        assert client.config.model == "explicit-model"
+
+    def test_llm_client_task_type_literal(self):
+        """Test that TaskType literal values are correct."""
+        # This tests that the type definition is correct
+        valid_tasks: list[TaskType] = ["crawl", "glossary", "translate", "default"]
+        assert len(valid_tasks) == 4
+
+    @patch('dich_truyen.translator.llm.get_config')
+    def test_llm_client_crawl_task_uses_crawler_config(self, mock_get_config):
+        """Test LLMClient with task='crawl' uses crawler_llm config."""
+        # Setup mock config
+        mock_app_config = MagicMock()
+        mock_app_config.llm = LLMConfig(
+            api_key="default-key",
+            base_url="https://default.com/v1",
+            model="default-model",
+        )
+        mock_app_config.crawler_llm = CrawlerLLMConfig(
+            api_key="crawler-key",
+            model="crawler-model",
+        )
+        mock_get_config.return_value = mock_app_config
+        
+        client = LLMClient(task="crawl")
+        
+        assert client.config.api_key == "crawler-key"
+        assert client.config.model == "crawler-model"
+        # Falls back to default for base_url
+        assert client.config.base_url == "https://default.com/v1"
+
+    @patch('dich_truyen.translator.llm.get_config')
+    def test_llm_client_glossary_task_uses_glossary_config(self, mock_get_config):
+        """Test LLMClient with task='glossary' uses glossary_llm config."""
+        mock_app_config = MagicMock()
+        mock_app_config.llm = LLMConfig(
+            api_key="default-key",
+            model="default-model",
+        )
+        mock_app_config.glossary_llm = GlossaryLLMConfig(
+            model="glossary-model",
+            temperature=0.3,
+        )
+        mock_get_config.return_value = mock_app_config
+        
+        client = LLMClient(task="glossary")
+        
+        assert client.config.model == "glossary-model"
+        assert client.config.temperature == 0.3
+        assert client.config.api_key == "default-key"
+
+    @patch('dich_truyen.translator.llm.get_config')
+    def test_llm_client_translate_task_uses_translator_config(self, mock_get_config):
+        """Test LLMClient with task='translate' uses translator_llm config."""
+        mock_app_config = MagicMock()
+        mock_app_config.llm = LLMConfig(
+            api_key="default-key",
+            model="default-model",
+        )
+        mock_app_config.translator_llm = TranslatorLLMConfig(
+            model="translator-model",
+            max_tokens=8192,
+        )
+        mock_get_config.return_value = mock_app_config
+        
+        client = LLMClient(task="translate")
+        
+        assert client.config.model == "translator-model"
+        assert client.config.max_tokens == 8192
+        assert client.config.api_key == "default-key"
+
+    @patch('dich_truyen.translator.llm.get_config')
+    def test_llm_client_default_task_uses_default_config(self, mock_get_config):
+        """Test LLMClient with task='default' uses default llm config."""
+        mock_app_config = MagicMock()
+        mock_app_config.llm = LLMConfig(
+            api_key="default-key",
+            model="default-model",
+            temperature=0.7,
+        )
+        mock_get_config.return_value = mock_app_config
+        
+        client = LLMClient(task="default")
+        
+        assert client.config.api_key == "default-key"
+        assert client.config.model == "default-model"
+        assert client.config.temperature == 0.7
+
+    @patch('dich_truyen.translator.llm.get_config')
+    def test_llm_client_no_task_uses_default_config(self, mock_get_config):
+        """Test LLMClient without task parameter uses default llm config."""
+        mock_app_config = MagicMock()
+        mock_app_config.llm = LLMConfig(
+            api_key="default-key",
+            model="default-model",
+        )
+        mock_get_config.return_value = mock_app_config
+        
+        client = LLMClient()
+        
+        assert client.config.api_key == "default-key"
+        assert client.config.model == "default-model"
+
+    @patch('dich_truyen.translator.llm.get_config')
+    def test_llm_client_explicit_config_takes_precedence(self, mock_get_config):
+        """Test that explicit config takes precedence over task-based lookup."""
+        mock_app_config = MagicMock()
+        mock_app_config.llm = LLMConfig(api_key="default-key", model="default-model")
+        mock_app_config.crawler_llm = CrawlerLLMConfig(model="crawler-model")
+        mock_get_config.return_value = mock_app_config
+        
+        explicit_config = LLMConfig(api_key="explicit-key", model="explicit-model")
+        
+        # Even with task="crawl", explicit config should take precedence
+        client = LLMClient(config=explicit_config, task="crawl")
+        
+        assert client.config.api_key == "explicit-key"
+        assert client.config.model == "explicit-model"
+
+    def test_app_config_includes_task_specific_configs(self):
+        """Test that AppConfig includes all task-specific LLM configs."""
+        config = AppConfig()
+        
+        # Check all config types exist
+        assert hasattr(config, 'llm')
+        assert hasattr(config, 'crawler_llm')
+        assert hasattr(config, 'glossary_llm')
+        assert hasattr(config, 'translator_llm')
+        
+        # Check they are correct types
+        assert isinstance(config.llm, LLMConfig)
+        assert isinstance(config.crawler_llm, CrawlerLLMConfig)
+        assert isinstance(config.glossary_llm, GlossaryLLMConfig)
+        assert isinstance(config.translator_llm, TranslatorLLMConfig)

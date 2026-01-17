@@ -52,7 +52,7 @@ class TranslationEngine:
             config: Translation configuration
             term_scorer: Optional TF-IDF scorer for intelligent glossary selection
         """
-        self.llm = llm or LLMClient()
+        self.llm = llm or LLMClient(task="translate")
         self.style = style
         self.glossary = glossary or Glossary()
         self.config = config or get_config().translation
@@ -656,6 +656,11 @@ async def setup_translation(
     Returns:
         Configured TranslationEngine
     """
+    from dich_truyen.config import log_llm_config_summary
+    
+    # Show LLM configuration
+    log_llm_config_summary()
+    
     book_dir = Path(book_dir)
 
     # Load style
@@ -720,7 +725,7 @@ async def setup_translation(
     progress = BookProgress.load(book_dir)
     if progress and not progress.title_vi:
         console.print("[blue]Translating book metadata...[/blue]")
-        llm = LLMClient()
+        llm = LLMClient(task="translate")
         
         # Translate book title
         if progress.title:
@@ -799,7 +804,7 @@ async def translate_chapter_titles(book_dir: Path, chapters_spec: Optional[str] 
 
     console.print(f"[blue]Translating {len(chapters_to_translate)} chapter titles...[/blue]")
     
-    llm = LLMClient()
+    llm = LLMClient(task="translate")
     
     for chapter in chapters_to_translate:
         if chapter.title_cn:

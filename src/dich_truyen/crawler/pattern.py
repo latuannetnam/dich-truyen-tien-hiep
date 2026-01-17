@@ -9,7 +9,8 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
 from rich.console import Console
 
-from dich_truyen.config import LLMConfig, get_config
+from dich_truyen.config import LLMConfig
+from dich_truyen.translator.llm import LLMClient
 from dich_truyen.utils.progress import BookPatterns
 
 console = Console()
@@ -90,22 +91,16 @@ class PatternDiscovery:
         """Initialize pattern discovery.
 
         Args:
-            llm_config: LLM configuration, uses global config if None
+            llm_config: LLM configuration, uses crawler_llm config if None
         """
-        self.config = llm_config or get_config().llm
-        self._client = None
+        # Use LLMClient with task="crawl" for automatic config lookup
+        self._llm = LLMClient(config=llm_config, task="crawl")
+        self.config = self._llm.config
 
     @property
     def client(self):
-        """Lazy-load OpenAI client."""
-        if self._client is None:
-            import openai
-
-            self._client = openai.AsyncOpenAI(
-                api_key=self.config.api_key,
-                base_url=self.config.base_url,
-            )
-        return self._client
+        """Get OpenAI client from LLMClient."""
+        return self._llm.client
 
     async def analyze_index_page(self, html: str, url: str) -> DiscoveredBook:
         """Use LLM to discover book info and chapter list pattern.

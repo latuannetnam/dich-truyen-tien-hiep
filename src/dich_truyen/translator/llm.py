@@ -1,26 +1,70 @@
 """OpenAI-compatible LLM client wrapper."""
 
 import asyncio
-from typing import Optional
+from typing import Literal, Optional
 
 from rich.console import Console
 
-from dich_truyen.config import LLMConfig, get_config
+from dich_truyen.config import LLMConfig, get_config, get_effective_llm_config
 
 console = Console()
+
+# Task types for LLM client configuration
+TaskType = Literal["crawl", "glossary", "translate", "default"]
 
 
 class LLMClient:
     """OpenAI-compatible LLM client with retry logic."""
 
-    def __init__(self, config: Optional[LLMConfig] = None):
+    def __init__(
+        self,
+        config: Optional[LLMConfig] = None,
+        task: Optional[TaskType] = None,
+    ):
         """Initialize the LLM client.
 
         Args:
             config: LLM configuration, uses global config if None
+            task: Task type for automatic config selection (crawl, glossary, translate)
+                  If both config and task are provided, config takes precedence.
         """
-        self.config = config or get_config().llm
+        if config:
+            self.config = config
+        else:
+            self.config = self._get_config_for_task(task or "default")
         self._client = None
+
+    def _get_config_for_task(self, task: TaskType) -> LLMConfig:
+        """Get effective LLM config for a specific task.
+        
+        This method retrieves the task-specific config (e.g., crawler_llm for crawl task)
+        and merges it with the default llm config for any unset values.
+        
+        Args:
+            task: The task type (crawl, glossary, translate, default)
+            
+        Returns:
+            LLMConfig with effective values for the task
+        """
+        app_config = get_config()
+        fallback = app_config.llm
+        
+        if task == "crawl":
+            return get_effective_llm_config(app_config.crawler_llm, fallback, "Crawler")
+        elif task == "glossary":
+            return get_effective_llm_config(app_config.glossary_llm, fallback, "Glossary")
+        elif task == "translate":
+            return get_effective_llm_config(app_config.translator_llm, fallback, "Translator")
+        else:
+            # Default task - log direct usage
+            console.print(f"[blue]  Default LLM Config:[/blue]")
+            console.print(f"[blue]    • Model: {fallback.model}[/blue]")
+            masked = fallback.api_key[:8] + "..." if len(fallback.api_key) > 8 else "***"
+            console.print(f"[blue]    • API Key: {masked}[/blue]")
+            console.print(f"[blue]    • Base URL: {fallback.base_url}[/blue]")
+            console.print(f"[blue]    • Max Tokens: {fallback.max_tokens}[/blue]")
+            console.print(f"[blue]    • Temperature: {fallback.temperature}[/blue]")
+            return fallback
 
     @property
     def client(self):
@@ -200,17 +244,21 @@ Quy tắc:
         )
 
 
-async def test_llm_connection(config: Optional[LLMConfig] = None) -> bool:
+async def test_llm_connection(
+    config: Optional[LLMConfig] = None,
+    task: Optional[TaskType] = None,
+) -> bool:
     """Test if the LLM connection is working.
 
     Args:
-        config: LLM configuration
+        config: LLM configuration (takes precedence if provided)
+        task: Task type for automatic config selection
 
     Returns:
         True if connection successful
     """
     try:
-        client = LLMClient(config)
+        client = LLMClient(config=config, task=task)
         response = await client.complete(
             system_prompt="You are a helpful assistant.",
             user_prompt="Say 'hello' in Vietnamese.",

@@ -76,3 +76,5 @@ books/
 # uv
 .uv/
 uv.lock
+# Others
+.claude

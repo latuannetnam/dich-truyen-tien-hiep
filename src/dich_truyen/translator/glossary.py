@@ -398,7 +398,7 @@ async def generate_glossary_from_samples(
     from dich_truyen.translator.llm import LLMClient
     import re
 
-    llm = LLMClient()
+    llm = LLMClient(task="glossary")
     
     # Determine character naming rule based on style
     character_naming_rule = _get_character_naming_rule(style)
@@ -531,7 +531,7 @@ async def extract_new_terms_from_chapter(
     if not existing_terms:
         existing_terms = "(chưa có)"
 
-    llm = LLMClient()
+    llm = LLMClient(task="glossary")
     
     # Get character naming rule based on style
     character_naming_rule = _get_character_naming_rule(style)

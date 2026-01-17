@@ -192,6 +192,10 @@ class StreamingPipeline:
         to_translate = [c for c in chapters if c.status == ChapterStatus.CRAWLED]
         already_done = [c for c in chapters if c.status == ChapterStatus.TRANSLATED]
         
+        # Log LLM configuration summary
+        from dich_truyen.config import log_llm_config_summary
+        log_llm_config_summary()
+        
         console.print(f"\n[bold blue]═══ Streaming Pipeline ═══[/bold blue]")
         console.print(f"Book: {self.progress.title} ({self.progress.title_vi or 'translating...'})")
         console.print(f"Chapters: {len(chapters)} total")

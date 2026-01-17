@@ -1,10 +1,12 @@
 """Configuration management with environment variables and CLI overrides."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from rich.console import Console
+from rich.table import Table
 
 
 class LLMConfig(BaseSettings):
@@ -17,6 +19,42 @@ class LLMConfig(BaseSettings):
     model: str = Field(default="gpt-4o", description="Model name")
     max_tokens: int = Field(default=4096, description="Max tokens per request")
     temperature: float = Field(default=0.7, description="Temperature for generation")
+
+
+class CrawlerLLMConfig(BaseSettings):
+    """LLM configuration for crawler/pattern discovery."""
+
+    model_config = SettingsConfigDict(env_prefix="CRAWLER_LLM_")
+
+    api_key: str = Field(default="", description="API key")
+    base_url: str = Field(default="", description="API base URL")
+    model: str = Field(default="", description="Model name")
+    max_tokens: int = Field(default=0, description="Max tokens per request")
+    temperature: float = Field(default=0.0, description="Temperature")
+
+
+class GlossaryLLMConfig(BaseSettings):
+    """LLM configuration for glossary generation."""
+
+    model_config = SettingsConfigDict(env_prefix="GLOSSARY_LLM_")
+
+    api_key: str = Field(default="", description="API key")
+    base_url: str = Field(default="", description="API base URL")
+    model: str = Field(default="", description="Model name")
+    max_tokens: int = Field(default=0, description="Max tokens per request")
+    temperature: float = Field(default=0.0, description="Temperature")
+
+
+class TranslatorLLMConfig(BaseSettings):
+    """LLM configuration for translation."""
+
+    model_config = SettingsConfigDict(env_prefix="TRANSLATOR_LLM_")
+
+    api_key: str = Field(default="", description="API key")
+    base_url: str = Field(default="", description="API base URL")
+    model: str = Field(default="", description="Model name")
+    max_tokens: int = Field(default=0, description="Max tokens per request")
+    temperature: float = Field(default=0.0, description="Temperature")
 
 
 class CrawlerConfig(BaseSettings):
@@ -112,6 +150,11 @@ class AppConfig(BaseSettings):
     calibre: CalibreConfig = Field(default_factory=CalibreConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
+    
+    # Task-specific LLM configs (fallback to llm if not set)
+    crawler_llm: CrawlerLLMConfig = Field(default_factory=CrawlerLLMConfig)
+    glossary_llm: GlossaryLLMConfig = Field(default_factory=GlossaryLLMConfig)
+    translator_llm: TranslatorLLMConfig = Field(default_factory=TranslatorLLMConfig)
 
     @classmethod
     def load(cls, env_file: Optional[Path] = None) -> "AppConfig":
@@ -129,6 +172,9 @@ class AppConfig(BaseSettings):
             crawler=CrawlerConfig(),
             translation=TranslationConfig(),
             calibre=CalibreConfig(),
+            crawler_llm=CrawlerLLMConfig(),
+            glossary_llm=GlossaryLLMConfig(),
+            translator_llm=TranslatorLLMConfig(),
         )
 
 
@@ -148,3 +194,170 @@ def set_config(config: AppConfig) -> None:
     """Set the global configuration instance."""
     global _config
     _config = config
+
+
+def get_effective_llm_config(
+    specific: Union[CrawlerLLMConfig, GlossaryLLMConfig, TranslatorLLMConfig],
+    fallback: LLMConfig,
+    task_name: Optional[str] = None,
+) -> LLMConfig:
+    """Merge specific LLM config with fallback for unset values.
+    
+    This allows task-specific configs (crawler_llm, glossary_llm, translator_llm)
+    to override only the values they set, falling back to the default llm config.
+    
+    Args:
+        specific: Task-specific config (CrawlerLLMConfig, GlossaryLLMConfig, etc.)
+        fallback: Default LLMConfig to use for unset values
+        task_name: Optional task name for detailed logging (e.g., "Crawler", "Glossary")
+        
+    Returns:
+        LLMConfig with merged values
+    """
+    console = Console()
+    
+    # Build effective config
+    effective = LLMConfig(
+        api_key=specific.api_key or fallback.api_key,
+        base_url=specific.base_url or fallback.base_url,
+        model=specific.model or fallback.model,
+        max_tokens=specific.max_tokens or fallback.max_tokens,
+        temperature=specific.temperature if specific.temperature > 0 else fallback.temperature,
+    )
+    
+    # Detailed logging if task_name provided
+    if task_name:
+        console.print(f"[blue]  {task_name} LLM Config:[/blue]")
+        
+        # Model
+        if specific.model:
+            console.print(f"[blue]    • Model: {effective.model} (specific)[/blue]")
+        else:
+            console.print(f"[blue]    • Model: {effective.model} (from default)[/blue]")
+        
+        # API Key (masked for security)
+        if specific.api_key:
+            masked = effective.api_key[:8] + "..." if len(effective.api_key) > 8 else "***"
+            console.print(f"[blue]    • API Key: {masked} (specific)[/blue]")
+        else:
+            masked = effective.api_key[:8] + "..." if len(effective.api_key) > 8 else "***"
+            console.print(f"[blue]    • API Key: {masked} (from default)[/blue]")
+        
+        # Base URL
+        if specific.base_url:
+            console.print(f"[blue]    • Base URL: {effective.base_url} (specific)[/blue]")
+        else:
+            console.print(f"[blue]    • Base URL: {effective.base_url} (from default)[/blue]")
+        
+        # Max Tokens
+        if specific.max_tokens:
+            console.print(f"[blue]    • Max Tokens: {effective.max_tokens} (specific)[/blue]")
+        else:
+            console.print(f"[blue]    • Max Tokens: {effective.max_tokens} (from default)[/blue]")
+        
+        # Temperature
+        if specific.temperature > 0:
+            console.print(f"[blue]    • Temperature: {effective.temperature} (specific)[/blue]")
+        else:
+            console.print(f"[blue]    • Temperature: {effective.temperature} (from default)[/blue]")
+    
+    return effective
+
+
+def log_llm_config_summary() -> None:
+    """Log a summary table of all LLM configurations.
+    
+    Shows default config and any task-specific overrides in a clear table format.
+    """
+    console = Console()
+    app_config = get_config()
+    
+    console.print("\n[bold blue]=== LLM Configuration ===[/bold blue]")
+    
+    # Create table
+    table = Table(show_header=True, header_style="bold blue")
+    table.add_column("Task", style="cyan", width=12)
+    table.add_column("Model", style="green")
+    table.add_column("Base URL", style="yellow")
+    table.add_column("Max Tokens", style="magenta", justify="right")
+    table.add_column("Temperature", style="magenta", justify="right")
+    table.add_column("Source", style="dim")
+    
+    # Default config
+    table.add_row(
+        "Default",
+        app_config.llm.model,
+        app_config.llm.base_url,
+        str(app_config.llm.max_tokens),
+        str(app_config.llm.temperature),
+        "OPENAI_*"
+    )
+    
+    # Crawler config
+    if app_config.crawler_llm.model or app_config.crawler_llm.api_key:
+        effective = get_effective_llm_config(app_config.crawler_llm, app_config.llm)
+        source = "CRAWLER_LLM_*" if app_config.crawler_llm.model else "OPENAI_* (fallback)"
+        table.add_row(
+            "Crawler",
+            effective.model,
+            effective.base_url,
+            str(effective.max_tokens),
+            str(effective.temperature),
+            source
+        )
+    else:
+        table.add_row(
+            "Crawler",
+            app_config.llm.model,
+            app_config.llm.base_url,
+            str(app_config.llm.max_tokens),
+            str(app_config.llm.temperature),
+            "OPENAI_* (fallback)"
+        )
+    
+    # Glossary config
+    if app_config.glossary_llm.model or app_config.glossary_llm.api_key:
+        effective = get_effective_llm_config(app_config.glossary_llm, app_config.llm)
+        source = "GLOSSARY_LLM_*" if app_config.glossary_llm.model else "OPENAI_* (fallback)"
+        table.add_row(
+            "Glossary",
+            effective.model,
+            effective.base_url,
+            str(effective.max_tokens),
+            str(effective.temperature),
+            source
+        )
+    else:
+        table.add_row(
+            "Glossary",
+            app_config.llm.model,
+            app_config.llm.base_url,
+            str(app_config.llm.max_tokens),
+            str(app_config.llm.temperature),
+            "OPENAI_* (fallback)"
+        )
+    
+    # Translator config
+    if app_config.translator_llm.model or app_config.translator_llm.api_key:
+        effective = get_effective_llm_config(app_config.translator_llm, app_config.llm)
+        source = "TRANSLATOR_LLM_*" if app_config.translator_llm.model else "OPENAI_* (fallback)"
+        table.add_row(
+            "Translator",
+            effective.model,
+            effective.base_url,
+            str(effective.max_tokens),
+            str(effective.temperature),
+            source
+        )
+    else:
+        table.add_row(
+            "Translator",
+            app_config.llm.model,
+            app_config.llm.base_url,
+            str(app_config.llm.max_tokens),
+            str(app_config.llm.temperature),
+            "OPENAI_* (fallback)"
+        )
+    
+    console.print(table)
+    console.print()
