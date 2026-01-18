@@ -91,6 +91,20 @@ class TranslationConfig(BaseSettings):
     glossary_min_entries: int = Field(default=20, description="Minimum glossary entries to generate")
     glossary_max_entries: int = Field(default=100, description="Maximum glossary entries to keep")
     glossary_random_sample: bool = Field(default=True, description="Randomly select sample chapters")
+    
+    # Two-pass translation (Editor-in-Chief)
+    enable_polish_pass: bool = Field(
+        default=True,
+        description="Enable second pass for polishing translation"
+    )
+    polish_temperature: float = Field(
+        default=0.4,
+        description="Temperature for polish pass (lower = more conservative edits)"
+    )
+    polish_max_retries: int = Field(
+        default=1,
+        description="Max retries for polish pass before falling back to draft"
+    )
 
 
 class CalibreConfig(BaseSettings):

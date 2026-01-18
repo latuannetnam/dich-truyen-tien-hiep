@@ -6,4 +6,7 @@
 @REM uv run dich-truyen pipeline --url "https://www.piaotia.com/html/8/8717/index.html" --chapters 1-5 --format pdf
 @REM Ao Thuat Than Toa
 @REM uv run dich-truyen pipeline --url https://www.piaotia.com/html/3/3759/index.html --chapters 1-5 --style tay_phuong --format pdf
-uv run dich-truyen pipeline --book-dir .\books\3759-indexhtml\ --chapters 1-2 --style tay_phuong --format pdf --translate-only --force
+@REM uv run dich-truyen pipeline --book-dir .\books\3759-indexhtml\ --chapters 1-2 --style tay_phuong --format pdf --translate-only --force
+
+@REM Dai Dao Tranh Phong
+uv run dich-truyen pipeline --url https://www.piaotia.com/html/2/2408/index.html --chapters 1-5 --format pdf --translate-only --force

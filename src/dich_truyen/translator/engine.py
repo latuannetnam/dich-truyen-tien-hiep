@@ -341,6 +341,63 @@ class TranslationEngine:
                 narrative_state=narrative_state,
             )
 
+    async def _polish_translation(
+        self,
+        source_chinese: str,
+        draft_vietnamese: str,
+        progress_callback=None,
+    ) -> str:
+        """Polish a draft translation using Editor-in-Chief approach.
+
+        Args:
+            source_chinese: Original Chinese text
+            draft_vietnamese: Draft Vietnamese translation
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            Polished Vietnamese text, or draft if polish fails
+        """
+        if not self.style:
+            raise ValueError("Style template not set")
+
+        style_prompt = self.style.to_prompt_format()
+
+        # Get relevant glossary for verification
+        max_glossary = self.config.glossary_max_entries
+        if self.glossary:
+            glossary_prompt = self.glossary.format_relevant_entries(
+                source_chinese, scorer=self.term_scorer, max_entries=max_glossary
+            )
+        else:
+            glossary_prompt = ""
+
+        max_retries = self.config.polish_max_retries
+        last_error = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                if progress_callback:
+                    progress_callback(f"polishing (attempt {attempt + 1})")
+
+                polished = await self.llm.polish(
+                    source_chinese=source_chinese,
+                    draft_vietnamese=draft_vietnamese,
+                    style_prompt=style_prompt,
+                    glossary_prompt=glossary_prompt,
+                    temperature=self.config.polish_temperature,
+                )
+                return polished
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    console.print(f"[yellow]Polish attempt {attempt + 1} failed: {e}[/yellow]")
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+
+        # All retries failed - fallback to draft
+        console.print(f"[yellow]Polish failed after {max_retries + 1} attempts, using draft: {last_error}[/yellow]")
+        return draft_vietnamese
+
     def create_chunks_with_context(self, text: str) -> list[dict]:
         """Split text into chunks with context from previous chunk.
 
@@ -459,10 +516,26 @@ class TranslationEngine:
             translated_chunks.append(translated)
 
         if progress_callback:
-            progress_callback(total_chunks, total_chunks, "[done]")
+            progress_callback(total_chunks, total_chunks, "combining...")
 
         # Combine translated chunks
-        result = "\n\n".join(translated_chunks)
+        draft_result = "\n\n".join(translated_chunks)
+
+        # Polish pass (Editor-in-Chief)
+        if self.config.enable_polish_pass:
+            if progress_callback:
+                progress_callback(total_chunks, total_chunks, "polishing...")
+
+            result = await self._polish_translation(
+                source_chinese=content,
+                draft_vietnamese=draft_result,
+                progress_callback=lambda status: progress_callback(total_chunks, total_chunks, status) if progress_callback else None,
+            )
+        else:
+            result = draft_result
+
+        if progress_callback:
+            progress_callback(total_chunks, total_chunks, "[done]")
 
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)

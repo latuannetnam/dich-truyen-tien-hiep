@@ -243,6 +243,73 @@ Quy tắc:
             max_tokens=100,
         )
 
+    def _build_polish_system_prompt(self, style_prompt: str) -> str:
+        """Build the system prompt for polishing pass."""
+        return f"""Bạn là biên tập viên cao cấp chuyên về tiểu thuyết tiên hiệp/kiếm hiệp.
+
+## Vai trò
+Bạn nhận được bản dịch thô (draft) và nguyên tác tiếng Trung. Nhiệm vụ của bạn là CHỈNH SỬA bản dịch để:
+
+1. **Tự nhiên hơn**: Câu văn mượt mà như người Việt viết, không "dịch máy"
+2. **Nhất quán phong cách**: Đảm bảo giọng văn {style_prompt} xuyên suốt
+3. **Chính xác thuật ngữ**: Kiểm tra glossary được sử dụng đúng
+4. **Giữ nguyên ý nghĩa**: KHÔNG thêm, bớt, hoặc thay đổi nội dung
+
+## Quy tắc tuyệt đối
+- Nếu câu dịch đã tốt, GIỮ NGUYÊN - đừng sửa vì sửa sẽ làm hỏng bản dịch
+- KHÔNG thêm giải thích, chú thích, hoặc bình luận
+- KHÔNG dịch lại từ đầu - chỉ chỉnh sửa những chỗ cần thiết
+- Giữ nguyên cấu trúc đoạn văn (số lượng đoạn, xuống dòng)
+- Chỉ trả về văn bản đã chỉnh sửa, không có gì khác"""
+
+    def _build_polish_user_prompt(
+        self,
+        source_chinese: str,
+        draft_vietnamese: str,
+        glossary_prompt: str,
+    ) -> str:
+        """Build the user prompt for polishing pass."""
+        parts = []
+
+        if glossary_prompt:
+            parts.append(f"## Bảng thuật ngữ (kiểm tra sử dụng đúng)\n{glossary_prompt}\n")
+
+        parts.append(f"## Nguyên tác tiếng Trung\n{source_chinese}\n")
+        parts.append(f"## Bản dịch thô cần chỉnh sửa\n{draft_vietnamese}")
+
+        return "\n".join(parts)
+
+    async def polish(
+        self,
+        source_chinese: str,
+        draft_vietnamese: str,
+        style_prompt: str,
+        glossary_prompt: str = "",
+        temperature: Optional[float] = None,
+    ) -> str:
+        """Polish a draft translation by comparing against source.
+
+        Args:
+            source_chinese: Original Chinese text
+            draft_vietnamese: Draft Vietnamese translation
+            style_prompt: Style guidelines for consistency
+            glossary_prompt: Glossary terms to verify
+            temperature: Override temperature (lower = more conservative)
+
+        Returns:
+            Polished Vietnamese text
+        """
+        system_prompt = self._build_polish_system_prompt(style_prompt)
+        user_prompt = self._build_polish_user_prompt(
+            source_chinese, draft_vietnamese, glossary_prompt
+        )
+
+        return await self.complete(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature or 0.4,
+        )
+
 
 async def test_llm_connection(
     config: Optional[LLMConfig] = None,
