@@ -6,6 +6,7 @@ import { BookOpen, FileText, CheckCircle2, PlusCircle } from "lucide-react";
 import { getBooks } from "@/lib/api";
 import type { BookSummary } from "@/lib/types";
 import StatCard from "@/components/dashboard/StatCard";
+import ActiveJobs from "@/components/dashboard/ActiveJobs";
 import BookCard from "@/components/library/BookCard";
 import BookCardSkeleton from "@/components/library/BookCardSkeleton";
 
@@ -73,6 +74,9 @@ export default function Home() {
           />
         </div>
       )}
+
+      {/* Active Jobs */}
+      <ActiveJobs />
 
       {/* Recent Books */}
       <div className="flex items-center justify-between mb-4">
