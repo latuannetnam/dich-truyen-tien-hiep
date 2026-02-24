@@ -418,7 +418,10 @@ def ui(port: int, host: str, no_browser: bool) -> None:
 
     try:
         uvicorn.run(app, host=host, port=port, log_level="info")
+    except KeyboardInterrupt:
+        pass
     finally:
+        console.print("\n[dim]Shutting down...[/dim]")
         next_proc.terminate()
         try:
             next_proc.wait(timeout=5)
