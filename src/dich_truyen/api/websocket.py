@@ -1,12 +1,10 @@
 """WebSocket handler for real-time pipeline events."""
 
 import asyncio
-from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from dich_truyen.services.events import EventBus, PipelineEvent
-
 
 router = APIRouter()
 

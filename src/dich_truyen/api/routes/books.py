@@ -8,7 +8,6 @@ from pydantic import BaseModel
 
 from dich_truyen.utils.progress import BookProgress, ChapterStatus
 
-
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
 # Set by server.py at startup

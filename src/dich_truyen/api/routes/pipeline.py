@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from dich_truyen.services.events import EventBus
 from dich_truyen.services.pipeline_service import PipelineService
 
-
 router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
 
 # Shared instances (set by server.py)
