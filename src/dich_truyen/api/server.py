@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from dich_truyen import __version__
 from dich_truyen.api import websocket
-from dich_truyen.api.routes import books, pipeline
+from dich_truyen.api.routes import books, pipeline, settings
+from dich_truyen.services.config_service import ConfigService
 from dich_truyen.services.events import EventBus
 from dich_truyen.services.pipeline_service import PipelineService
 
@@ -42,6 +43,11 @@ def create_app(books_dir: Optional[Path] = None) -> FastAPI:
     pipeline.set_services(event_bus, pipeline_service)
     app.include_router(pipeline.router)
 
+    # Settings service
+    config_service = ConfigService()
+    settings.set_config_service(config_service)
+    app.include_router(settings.router)
+
     # Store on app.state for WebSocket access
     app.state.event_bus = event_bus
     app.state.pipeline_service = pipeline_service
@@ -54,3 +60,4 @@ def create_app(books_dir: Optional[Path] = None) -> FastAPI:
         return {"status": "ok", "version": __version__}
 
     return app
+

@@ -191,3 +191,48 @@ def test_websocket_pipeline_connect(tmp_path):
         # Send a test message to verify connection
         ws.send_json({"type": "ping"})
         # The connection should be alive (doesn't raise)
+
+
+# --- Settings API tests ---
+
+
+def test_get_settings(tmp_path):
+    """GET /settings returns current config."""
+    app = create_app(books_dir=tmp_path)
+    client = TestClient(app)
+    response = client.get("/api/v1/settings")
+    assert response.status_code == 200
+    data = response.json()
+    assert "llm" in data
+    assert "crawler" in data
+    assert "translation" in data
+    assert "pipeline" in data
+
+
+def test_update_settings(tmp_path):
+    """PUT /settings updates config values."""
+    app = create_app(books_dir=tmp_path)
+    client = TestClient(app)
+    response = client.put("/api/v1/settings", json={
+        "llm": {"model": "gpt-4o-mini"},
+    })
+    assert response.status_code == 200
+    # Verify updated
+    response = client.get("/api/v1/settings")
+    assert response.json()["llm"]["model"] == "gpt-4o-mini"
+
+
+def test_test_connection_no_key(tmp_path, monkeypatch):
+    """POST /settings/test-connection with empty key fails."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    # Create empty env file and reset config to avoid loading real .env
+    empty_env = tmp_path / ".env.test"
+    empty_env.write_text("", encoding="utf-8")
+    from dich_truyen.config import set_config, AppConfig
+    set_config(AppConfig.load(env_file=empty_env))
+    app = create_app(books_dir=tmp_path)
+    client = TestClient(app)
+    response = client.post("/api/v1/settings/test-connection")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is False
