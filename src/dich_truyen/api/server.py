@@ -1,12 +1,16 @@
 """FastAPI application factory."""
 
+from pathlib import Path
+from typing import Optional
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from dich_truyen import __version__
+from dich_truyen.api.routes import books
 
 
-def create_app() -> FastAPI:
+def create_app(books_dir: Optional[Path] = None) -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="Dịch Truyện API",
@@ -22,6 +26,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Configure books directory
+    if books_dir:
+        books.set_books_dir(books_dir)
+
+    app.include_router(books.router)
 
     @app.get("/api/v1/health")
     async def health() -> dict:
