@@ -217,6 +217,7 @@ The side-by-side reader already exists in `ReaderView.tsx`. Phase 3 enhancements
 - Create: `src/dich_truyen/api/routes/settings.py`
 - Modify: `src/dich_truyen/api/server.py`
 - Modify: `tests/test_api.py`
+- Modify: `pyproject.toml`
 
 **Step 1: Write failing tests**
 
@@ -448,7 +449,15 @@ class ConfigService:
         return value
 ```
 
-**Step 4: Implement settings routes**
+**Step 4: Add python-multipart dependency**
+
+Modify `pyproject.toml` to add `python-multipart` to dependencies (required by FastAPI for file uploads in Glossary API).
+
+```toml
+    "python-multipart>=0.0.9",
+```
+
+**Step 5: Implement settings routes**
 
 Create `src/dich_truyen/api/routes/settings.py`:
 
@@ -488,7 +497,7 @@ async def test_connection() -> dict[str, Any]:
     return _config_service.test_connection()
 ```
 
-**Step 5: Wire up in server.py**
+**Step 6: Wire up in server.py**
 
 Modify `src/dich_truyen/api/server.py` — add imports and router registration:
 
@@ -509,7 +518,7 @@ In `create_app()`, after pipeline router:
 +    app.include_router(settings.router)
 ```
 
-**Step 6: Run tests — verify they pass**
+**Step 7: Run tests — verify they pass**
 
 ```bash
 uv run pytest tests/test_api.py -v
@@ -517,7 +526,7 @@ uv run pytest tests/test_api.py -v
 
 Expected: All tests pass including 3 new settings tests.
 
-**Step 7: Run full test suite**
+**Step 8: Run full test suite**
 
 ```bash
 uv run pytest tests/ -v 2>&1 | Select-Object -Last 5
@@ -525,11 +534,11 @@ uv run pytest tests/ -v 2>&1 | Select-Object -Last 5
 
 Expected: All tests pass.
 
-**Step 8: Commit**
+**Step 9: Commit**
 
 ```bash
-git add src/dich_truyen/services/config_service.py src/dich_truyen/api/routes/settings.py src/dich_truyen/api/server.py tests/test_api.py
-git commit -m "feat(api): add settings API with ConfigService"
+git add src/dich_truyen/services/config_service.py src/dich_truyen/api/routes/settings.py src/dich_truyen/api/server.py tests/test_api.py pyproject.toml
+git commit -m "feat(api): add settings API and python-multipart dependency"
 ```
 
 ---
@@ -868,6 +877,8 @@ git commit -m "feat(api): add glossary CRUD endpoints"
 
 **Files:**
 - Create: `web/src/app/settings/page.tsx`
+- Create: `web/src/components/ui/ToastProvider.tsx` (or similar custom global toast system)
+- Modify: `web/src/app/layout.tsx` (wrap with ToastProvider)
 - Modify: `web/src/lib/api.ts`
 - Modify: `web/src/lib/types.ts`
 
@@ -942,7 +953,11 @@ export async function testConnection(): Promise<TestConnectionResult> {
 }
 ```
 
-**Step 3: Create Settings page**
+**Step 3: Create Toast System**
+
+Create a global Toast context (`ToastProvider.tsx`) and wrap `layout.tsx` with it, allowing any page to trigger success/error toasts.
+
+**Step 4: Create Settings page**
 
 Create `web/src/app/settings/page.tsx` — a form page with sections for each config group (API, Crawler, Translation, Pipeline, Export). Uses the design specs from the wireframe above. Key behaviors:
 
@@ -950,12 +965,12 @@ Create `web/src/app/settings/page.tsx` — a form page with sections for each co
 - Save button calls `updateSettings()` with changed values
 - Test Connection button calls `testConnection()` and shows inline result
 - Reset button reloads from server
-- Success/error feedback via inline toast
+- Success/error feedback via the global Toast system
 - Password toggle for API key field
 
 > **Note:** Full component code will be written during execution. The page follows the same patterns as existing pages (e.g., `/new/page.tsx` for form inputs, card-based sections).
 
-**Step 4: Verify in browser**
+**Step 5: Verify in browser**
 
 Start dev servers and verify:
 ```bash
@@ -965,12 +980,13 @@ Navigate to `http://localhost:3000/settings` and verify:
 - Settings load and display
 - Save updates config
 - Test Connection shows result
+- Global toasts appear correctly
 
-**Step 5: Commit**
+**Step 6: Commit**
 
 ```bash
-git add web/src/app/settings/ web/src/lib/api.ts web/src/lib/types.ts
-git commit -m "feat(web): add Settings page"
+git add web/src/app/settings/ web/src/lib/api.ts web/src/lib/types.ts web/src/app/layout.tsx web/src/components/ui/
+git commit -m "feat(web): add global Toast system and Settings page"
 ```
 
 ---
@@ -1045,6 +1061,19 @@ export async function deleteGlossaryEntry(bookId: string, term: string): Promise
   );
   if (!res.ok) throw new Error(`API error: ${res.status}`);
 }
+
+export async function importGlossaryCsv(bookId: string, file: File): Promise<{imported: number}> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/books/${bookId}/glossary/import`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+// For export, we just use the raw URL: `${API_BASE}/books/${bookId}/glossary/export`
 ```
 
 **Step 3: Create GlossaryEditor component and page**
@@ -1081,6 +1110,7 @@ git commit -m "feat(web): add Glossary Editor page"
 **Files:**
 - Modify: `web/src/components/reader/ReaderView.tsx`
 - Modify: `web/src/app/books/[id]/read/page.tsx`
+- Modify: `web/src/components/book/BookDetailView.tsx`
 
 **Step 1: Add paragraph-aligned side-by-side mode**
 
