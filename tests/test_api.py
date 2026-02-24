@@ -130,3 +130,47 @@ def test_get_chapter_not_found(books_dir):
     assert response.status_code == 404
 
 
+# --- Pipeline API tests ---
+
+
+def test_start_pipeline_requires_url_or_book_dir(tmp_path):
+    """POST /pipeline/start without url or book_dir returns 422."""
+    app = create_app(books_dir=tmp_path)
+    client = TestClient(app)
+    response = client.post("/api/v1/pipeline/start", json={})
+    assert response.status_code == 422
+
+
+def test_start_pipeline_creates_job(tmp_path):
+    """POST /pipeline/start with url creates a job."""
+    app = create_app(books_dir=tmp_path)
+    client = TestClient(app)
+    response = client.post("/api/v1/pipeline/start", json={
+        "url": "https://example.com/book",
+        "style": "tien_hiep",
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "running"
+    assert "id" in data
+
+
+def test_list_pipeline_jobs(tmp_path):
+    """GET /pipeline/jobs returns list of jobs."""
+    app = create_app(books_dir=tmp_path)
+    client = TestClient(app)
+    # Create a job first
+    client.post("/api/v1/pipeline/start", json={"url": "https://example.com"})
+    response = client.get("/api/v1/pipeline/jobs")
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+
+def test_get_pipeline_job_not_found(tmp_path):
+    """GET /pipeline/jobs/:id returns 404 for unknown job."""
+    app = create_app(books_dir=tmp_path)
+    client = TestClient(app)
+    response = client.get("/api/v1/pipeline/jobs/nonexistent")
+    assert response.status_code == 404
+
+
