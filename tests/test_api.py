@@ -71,3 +71,62 @@ def test_list_books_empty(tmp_path):
     assert response.status_code == 200
     assert response.json() == []
 
+
+@pytest.fixture
+def books_dir_with_content(books_dir):
+    """Extend books_dir fixture with chapter content files."""
+    book_dir = books_dir / "test-book-1"
+    raw_dir = book_dir / "raw"
+    raw_dir.mkdir()
+    # Use actual naming pattern: {index:04d}_{title}.txt
+    (raw_dir / "0001_第一章.txt").write_text("这是中文内容。第一章。", encoding="utf-8")
+
+    translated_dir = book_dir / "translated"
+    translated_dir.mkdir()
+    (translated_dir / "0001_第一章.txt").write_text(
+        "Đây là nội dung tiếng Việt. Chương một.", encoding="utf-8"
+    )
+    return books_dir
+
+
+def test_get_book_detail(books_dir_with_content):
+    app = create_app(books_dir=books_dir_with_content)
+    client = TestClient(app)
+    response = client.get("/api/v1/books/test-book-1")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == "测试书籍"
+    assert len(data["chapters"]) == 3
+    assert data["chapters"][0]["status"] == "translated"
+
+
+def test_get_book_not_found(books_dir):
+    app = create_app(books_dir=books_dir)
+    client = TestClient(app)
+    response = client.get("/api/v1/books/nonexistent")
+    assert response.status_code == 404
+
+
+def test_get_chapter_raw(books_dir_with_content):
+    app = create_app(books_dir=books_dir_with_content)
+    client = TestClient(app)
+    response = client.get("/api/v1/books/test-book-1/chapters/1/raw")
+    assert response.status_code == 200
+    assert "这是中文内容" in response.json()["content"]
+
+
+def test_get_chapter_translated(books_dir_with_content):
+    app = create_app(books_dir=books_dir_with_content)
+    client = TestClient(app)
+    response = client.get("/api/v1/books/test-book-1/chapters/1/translated")
+    assert response.status_code == 200
+    assert "nội dung tiếng Việt" in response.json()["content"]
+
+
+def test_get_chapter_not_found(books_dir):
+    app = create_app(books_dir=books_dir)
+    client = TestClient(app)
+    response = client.get("/api/v1/books/test-book-1/chapters/99/raw")
+    assert response.status_code == 404
+
+
