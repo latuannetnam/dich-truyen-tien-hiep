@@ -33,6 +33,11 @@ dich-truyen
 └── style              Manage translation styles
     ├── list           List available styles (built-in + custom)
     └── generate NAME  Generate a new style YAML template
+│
+└── ui                 Launch web UI server
+    ├── --port N       API server port (default: 8000)
+    ├── --host ADDR    API server host (default: 127.0.0.1)
+    └── --no-browser   Don't auto-open browser
 ```
 
 ## How to Add a New Command
@@ -56,4 +61,5 @@ uv run dich-truyen [command] [options]
 uv run dich-truyen pipeline "https://site.com/novel"
 uv run dich-truyen export books/my-book --format azw3
 uv run dich-truyen glossary show
+uv run dich-truyen ui --port 8000 --no-browser
 ```

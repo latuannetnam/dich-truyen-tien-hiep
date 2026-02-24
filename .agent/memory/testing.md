@@ -31,12 +31,16 @@ uv run pytest --cov=src
 ```bash
 uv run ruff check .     # Lint
 uv run ruff format .    # Format
+
+# Frontend lint
+cd web && npm run lint
 ```
 
 ## Test Directory
 
 ```
 tests/
+├── test_api.py        # FastAPI endpoint tests (httpx TestClient)
 ├── test_crawler.py
 ├── test_translator.py
 ├── test_glossary.py

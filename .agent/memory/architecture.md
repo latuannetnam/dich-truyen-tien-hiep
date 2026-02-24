@@ -56,6 +56,12 @@ description: Pipeline overview, component map, data flow, and key design decisio
 | **CLI** | `cli.py` | All user-facing commands |
 | **Config** | `config.py` | Pydantic settings & env vars |
 | **Progress** | `utils/progress.py` | BookProgress & chapter status |
+| **API** | `api/server.py` | FastAPI app factory with CORS |
+| | `api/routes/books.py` | Book list, detail, chapter content endpoints |
+| **Web UI** | `web/src/app/` | Next.js App Router pages (dashboard, library, book, reader) |
+| | `web/src/components/` | React components (Sidebar, BookCard, ChapterTable, ReaderView) |
+| | `web/src/lib/api.ts` | Frontend API client |
+| | `web/src/lib/types.ts` | TypeScript interfaces matching Pydantic models |
 
 ## Common Modification Points
 
@@ -65,3 +71,6 @@ description: Pipeline overview, component map, data flow, and key design decisio
 | Translation logic | `translator/engine.py:translate_chunk_with_context_marker()` |
 | Glossary generation | `translator/glossary.py:generate_glossary_from_samples()` |
 | CLI commands | `cli.py` with `@cli.command()` |
+| API endpoints | `api/routes/books.py` with `@router.get()` |
+| Web UI pages | `web/src/app/*/page.tsx` |
+| API proxy config | `web/next.config.ts` rewrites `/api/*` → `:8000` |
