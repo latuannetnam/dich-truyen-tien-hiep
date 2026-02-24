@@ -346,5 +346,48 @@ def style_generate(description: str, output: str) -> None:
     asyncio.run(run())
 
 
+# =============================================================================
+# UI Command
+# =============================================================================
+
+
+@cli.command()
+@click.option("--port", default=8000, type=int, help="API server port")
+@click.option("--host", default="127.0.0.1", help="API server host")
+@click.option("--no-browser", is_flag=True, help="Don't open browser automatically")
+def ui(port: int, host: str, no_browser: bool) -> None:
+    """Launch web UI in browser.
+
+    Starts the FastAPI server and opens the UI in your default browser.
+    """
+    import threading
+    import time
+    import webbrowser
+
+    import uvicorn
+
+    from dich_truyen.api.server import create_app
+    from dich_truyen.config import get_config
+
+    config = get_config()
+    app = create_app(books_dir=config.books_dir.resolve())
+
+    if not no_browser:
+
+        def open_browser() -> None:
+            time.sleep(1.5)
+            webbrowser.open(f"http://{host}:{port}")
+
+        threading.Thread(target=open_browser, daemon=True).start()
+
+    console.print("[bold green]🚀 Dịch Truyện UI starting...[/bold green]")
+    console.print(f"[blue]   API: http://{host}:{port}/api/docs[/blue]")
+    console.print(f"[blue]   UI:  http://{host}:{port}[/blue]")
+    console.print("[dim]   Press Ctrl+C to stop[/dim]\n")
+
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
 if __name__ == "__main__":
     cli()
+
