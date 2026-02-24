@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fira_Code, Fira_Sans } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "@/components/layout/LayoutWrapper";
+import ToastProvider from "@/components/ui/ToastProvider";
 
 const firaCode = Fira_Code({
   variable: "--font-fira-code",
@@ -30,8 +31,11 @@ export default function RootLayout({
   return (
     <html lang="vi">
       <body className={`${firaCode.variable} ${firaSans.variable} antialiased`}>
-        <LayoutWrapper>{children}</LayoutWrapper>
+        <ToastProvider>
+          <LayoutWrapper>{children}</LayoutWrapper>
+        </ToastProvider>
       </body>
     </html>
   );
 }
+

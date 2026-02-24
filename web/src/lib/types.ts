@@ -1,0 +1,149 @@
+/** Book summary for list view. */
+export interface BookSummary {
+  id: string;
+  title: string;
+  title_vi: string;
+  author: string;
+  author_vi: string;
+  url: string;
+  total_chapters: number;
+  pending_chapters: number;
+  crawled_chapters: number;
+  translated_chapters: number;
+  formatted_chapters: number;
+  exported_chapters: number;
+  error_chapters: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** Chapter info for book detail view. */
+export interface ChapterDetail {
+  index: number;
+  id: string;
+  title_cn: string;
+  title_vi: string | null;
+  status: string;
+  has_raw: boolean;
+  has_translated: boolean;
+}
+
+/** Full book detail. */
+export interface BookDetail {
+  id: string;
+  title: string;
+  title_vi: string;
+  author: string;
+  author_vi: string;
+  url: string;
+  encoding: string;
+  chapters: ChapterDetail[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** Chapter text content. */
+export interface ChapterContent {
+  chapter_index: number;
+  content: string;
+}
+
+/** Pipeline job. */
+export interface PipelineJob {
+  id: string;
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  url: string | null;
+  book_dir: string | null;
+  style: string;
+  workers: number;
+  created_at: number;
+  started_at: number | null;
+  completed_at: number | null;
+  progress: PipelineProgress;
+  error: string | null;
+}
+
+/** Pipeline progress stats. */
+export interface PipelineProgress {
+  total_chapters: number;
+  crawled: number;
+  translated: number;
+  errors: number;
+  worker_status?: Record<string, string>;
+  glossary_count?: number;
+}
+
+/** WebSocket pipeline event. */
+export interface PipelineEventMessage {
+  type: string;
+  data: Record<string, unknown>;
+  job_id: string;
+  timestamp: number;
+}
+
+/** Start pipeline request. */
+export interface StartPipelineRequest {
+  url?: string;
+  book_dir?: string;
+  style?: string;
+  workers?: number;
+  chapters?: string;
+  crawl_only?: boolean;
+  translate_only?: boolean;
+  no_glossary?: boolean;
+  force?: boolean;
+}
+
+/** Application settings. */
+export interface AppSettings {
+  llm: {
+    api_key: string;
+    base_url: string;
+    model: string;
+    max_tokens: number;
+    temperature: number;
+  };
+  crawler: {
+    delay_ms: number;
+    max_retries: number;
+    timeout_seconds: number;
+  };
+  translation: {
+    chunk_size: number;
+    chunk_overlap: number;
+    enable_polish_pass: boolean;
+    progressive_glossary: boolean;
+    polish_temperature: number;
+  };
+  pipeline: {
+    translator_workers: number;
+    queue_size: number;
+    crawl_delay_ms: number;
+  };
+  export: {
+    parallel_workers: number;
+    volume_size: number;
+    fast_mode: boolean;
+  };
+}
+
+/** Test connection result. */
+export interface TestConnectionResult {
+  success: boolean;
+  message: string;
+}
+
+/** Glossary entry. */
+export interface GlossaryEntryType {
+  chinese: string;
+  vietnamese: string;
+  category: string;
+  notes: string | null;
+}
+
+/** Glossary response. */
+export interface GlossaryResponseType {
+  entries: GlossaryEntryType[];
+  total: number;
+  categories: string[];
+}
