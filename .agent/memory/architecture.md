@@ -53,14 +53,19 @@ description: Pipeline overview, component map, data flow, and key design decisio
 | | `translator/term_scorer.py` | TF-IDF based glossary selection |
 | **Export** | `exporter/epub_assembler.py` | Direct EPUB assembly |
 | | `exporter/calibre.py` | Calibre AZW3/MOBI/PDF conversion |
+| **Services** | `services/events.py` | EventBus pub/sub for pipeline events |
+| | `services/pipeline_service.py` | Job lifecycle management, wraps StreamingPipeline |
 | **CLI** | `cli.py` | All user-facing commands |
 | **Config** | `config.py` | Pydantic settings & env vars |
 | **Progress** | `utils/progress.py` | BookProgress & chapter status |
-| **API** | `api/server.py` | FastAPI app factory with CORS |
+| **API** | `api/server.py` | FastAPI app factory with CORS, services init |
 | | `api/routes/books.py` | Book list, detail, chapter content endpoints |
-| **Web UI** | `web/src/app/` | Next.js App Router pages (dashboard, library, book, reader) |
-| | `web/src/components/` | React components (Sidebar, BookCard, ChapterTable, ReaderView) |
-| | `web/src/lib/api.ts` | Frontend API client |
+| | `api/routes/pipeline.py` | Pipeline start, list, get, cancel endpoints |
+| | `api/websocket.py` | WebSocket `/ws/pipeline/{job_id}` for real-time events |
+| **Web UI** | `web/src/app/` | Next.js App Router pages (dashboard, library, book, reader, new, pipeline) |
+| | `web/src/components/` | React components (Sidebar, BookCard, ChapterTable, ReaderView, ProgressPanel, WorkerCards, EventLog, WizardSteps, ActiveJobs) |
+| | `web/src/hooks/useWebSocket.ts` | React hook for pipeline WebSocket events |
+| | `web/src/lib/api.ts` | Frontend API client (books + pipeline) |
 | | `web/src/lib/types.ts` | TypeScript interfaces matching Pydantic models |
 
 ## Common Modification Points
@@ -71,6 +76,11 @@ description: Pipeline overview, component map, data flow, and key design decisio
 | Translation logic | `translator/engine.py:translate_chunk_with_context_marker()` |
 | Glossary generation | `translator/glossary.py:generate_glossary_from_samples()` |
 | CLI commands | `cli.py` with `@cli.command()` |
-| API endpoints | `api/routes/books.py` with `@router.get()` |
+| Book API endpoints | `api/routes/books.py` with `@router.get()` |
+| Pipeline API endpoints | `api/routes/pipeline.py` with `@router.post()` / `@router.get()` |
+| WebSocket handler | `api/websocket.py` — subscribes to EventBus, sends JSON |
+| Pipeline services | `services/pipeline_service.py` — job creation, status, background tasks |
+| Event system | `services/events.py` — subscribe/emit pattern |
 | Web UI pages | `web/src/app/*/page.tsx` |
 | API proxy config | `web/next.config.ts` rewrites `/api/*` → `:8000` |
+

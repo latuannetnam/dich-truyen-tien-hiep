@@ -15,7 +15,7 @@ Công cụ dòng lệnh để crawl, dịch và xuất truyện Trung Quốc san
 - 📕 **Xuất Ebook**: Chuyển đổi sang EPUB, AZW3, MOBI, PDF qua Calibre
 - 🔄 **Hoạt Động Tiếp Tục Được**: Tiếp tục download/dịch khi bị gián đoạn
 - ⚡ **Pipeline Streaming**: Crawl và dịch đồng thời với đa worker
-- 🖥️ **Giao Diện Web**: Duyệt thư viện sách, đọc chương dịch trực tiếp trên trình duyệt
+- 🖥️ **Giao Diện Web**: Duyệt thư viện sách, đọc chương, bắt đầu dịch và theo dõi tiến trình real-time trên trình duyệt
 
 ### Kỹ Thuật Nâng Cao
 
@@ -26,6 +26,7 @@ Công cụ dòng lệnh để crawl, dịch và xuất truyện Trung Quốc san
 | 🔍 **TF-IDF Glossary Selection** | Chọn thuật ngữ phù hợp nhất cho từng chunk dựa trên điểm TF-IDF |
 | ⚡ **Direct EPUB Assembly** | Tạo EPUB trực tiếp với parallel writing, nhanh hơn 10-20x |
 | 🚀 **Concurrent Pipeline** | Crawl và dịch song song với nhiều worker |
+| 🔌 **WebSocket Real-Time** | Theo dõi tiến trình dịch real-time qua WebSocket |
 
 ## Cài Đặt
 

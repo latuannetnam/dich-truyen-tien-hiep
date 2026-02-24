@@ -40,14 +40,16 @@ cd web && npm run lint
 
 ```
 tests/
-├── test_api.py        # FastAPI endpoint tests (httpx TestClient)
+├── test_api.py            # FastAPI endpoint tests (books, pipeline, WebSocket)
+├── test_events.py         # EventBus pub/sub tests
+├── test_pipeline_service.py # PipelineService job lifecycle tests
 ├── test_crawler.py
 ├── test_translator.py
 ├── test_glossary.py
 ├── test_progress.py
 ├── test_export.py
 ├── test_pipeline.py
-└── conftest.py        # Shared fixtures
+└── conftest.py            # Shared fixtures
 ```
 
 ## Key Patterns

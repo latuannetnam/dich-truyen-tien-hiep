@@ -15,7 +15,7 @@ A command-line tool for crawling, translating, and exporting Chinese novels to V
 - 📕 **Ebook Export**: Convert to EPUB, AZW3, MOBI, PDF via Calibre
 - 🔄 **Resumable Operations**: Continue interrupted downloads/translations
 - ⚡ **Streaming Pipeline**: Concurrent crawl and translate with multiple workers
-- 🖥️ **Web UI**: Browse your book library and read translated chapters in the browser
+- 🖥️ **Web UI**: Browse your book library, read chapters, start translations, and monitor progress in real-time
 
 ### Advanced Techniques
 
@@ -26,6 +26,7 @@ A command-line tool for crawling, translating, and exporting Chinese novels to V
 | 🔍 **TF-IDF Glossary Selection** | Selects most relevant glossary terms based on TF-IDF scores |
 | ⚡ **Direct EPUB Assembly** | Creates EPUB directly with parallel file writing, 10-20x faster |
 | 🚀 **Concurrent Pipeline** | Crawl and translate in parallel with multiple workers |
+| 🔌 **WebSocket Real-Time** | Monitor translation progress in real-time via WebSocket |
 
 ## Installation
 
