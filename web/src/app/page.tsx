@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BookOpen, FileText, CheckCircle2 } from "lucide-react";
+import { BookOpen, FileText, CheckCircle2, PlusCircle } from "lucide-react";
 import { getBooks } from "@/lib/api";
 import type { BookSummary } from "@/lib/types";
 import StatCard from "@/components/dashboard/StatCard";
@@ -132,16 +132,16 @@ export default function Home() {
           Browse Library
         </Link>
         <Link
-          href="/settings"
+          href="/new"
           className="
             inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium
-            bg-[var(--bg-surface)] border border-[var(--border-default)]
-            text-[var(--text-secondary)] hover:text-[var(--text-primary)]
-            hover:border-[var(--border-hover)] hover:bg-[var(--bg-elevated)]
+            bg-[var(--color-primary-subtle)] border border-[var(--color-primary)]/30
+            text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20
             transition-all duration-150 cursor-pointer
           "
         >
-          Open Settings
+          <PlusCircle size={16} />
+          New Translation
         </Link>
       </div>
     </div>
