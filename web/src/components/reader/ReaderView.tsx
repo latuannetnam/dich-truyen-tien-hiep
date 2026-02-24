@@ -41,18 +41,17 @@ export default function ReaderView({
   nextChapter,
 }: ReaderViewProps) {
   const [sideBySide, setSideBySide] = useState(false);
-  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
-
-  // Load font size from localStorage
-  useEffect(() => {
+  const [fontSize, setFontSize] = useState(() => {
+    if (typeof window === "undefined") return DEFAULT_FONT_SIZE;
     const saved = localStorage.getItem(FONT_SIZE_KEY);
     if (saved) {
       const parsed = parseInt(saved, 10);
       if (parsed >= MIN_FONT_SIZE && parsed <= MAX_FONT_SIZE) {
-        setFontSize(parsed);
+        return parsed;
       }
     }
-  }, []);
+    return DEFAULT_FONT_SIZE;
+  });
 
   const changeFontSize = useCallback(
     (delta: number) => {
