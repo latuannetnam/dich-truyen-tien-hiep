@@ -417,7 +417,9 @@ def ui(port: int, host: str, no_browser: bool) -> None:
     console.print("[dim]   Press Ctrl+C to stop[/dim]\n")
     import signal
 
-    config_uv = uvicorn.Config(app, host=host, port=port, log_level="info")
+    config_uv = uvicorn.Config(
+        app, host=host, port=port, log_level="info", lifespan="off"
+    )
     server = uvicorn.Server(config_uv)
 
     # Disable uvicorn's built-in signal handlers to avoid ugly tracebacks
