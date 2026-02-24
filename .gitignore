@@ -78,3 +78,7 @@ books/
 uv.lock
 # Others
 .claude
+
+# Next.js
+web/node_modules/
+web/.next/
