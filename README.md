@@ -15,6 +15,7 @@ Công cụ dòng lệnh để crawl, dịch và xuất truyện Trung Quốc san
 - 📕 **Xuất Ebook**: Chuyển đổi sang EPUB, AZW3, MOBI, PDF qua Calibre
 - 🔄 **Hoạt Động Tiếp Tục Được**: Tiếp tục download/dịch khi bị gián đoạn
 - ⚡ **Pipeline Streaming**: Crawl và dịch đồng thời với đa worker
+- 🖥️ **Giao Diện Web**: Duyệt thư viện sách, đọc chương dịch trực tiếp trên trình duyệt
 
 ### Kỹ Thuật Nâng Cao
 
@@ -123,6 +124,28 @@ Tùy chọn:
   --force               Ép làm lại tất cả
 ```
 
+### `ui` - Giao Diện Web
+
+```bash
+# Mở giao diện web (tự mở trình duyệt)
+uv run dich-truyen ui
+
+# Cấu hình cổng và host
+uv run dich-truyen ui --port 9000 --host 0.0.0.0
+
+# Không tự mở trình duyệt
+uv run dich-truyen ui --no-browser
+```
+
+> **Chế độ phát triển:** Chạy API server và Next.js dev server riêng:
+> ```bash
+> # Terminal 1: API server
+> uv run dich-truyen ui --no-browser --port 8000
+> # Terminal 2: Frontend
+> cd web && npm run dev
+> # Mở http://localhost:3000
+> ```
+
 ### `export` - Xuất Ebook
 
 ```bash
@@ -206,17 +229,24 @@ books/
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
+- [Node.js](https://nodejs.org/) 18+ (cho giao diện web)
 - [Calibre](https://calibre-ebook.com/) (để xuất ebook)
 - OpenAI API key (hoặc endpoint tương thích)
 
 ## Phát Triển
 
 ```bash
-# Cài đặt dependencies dev
+# Cài đặt dependencies Python
 uv sync --dev
 
-# Chạy tests
+# Cài đặt dependencies frontend
+cd web && npm install
+
+# Chạy tests Python
 uv run pytest tests/ -v
+
+# Chạy lint frontend
+cd web && npm run lint
 
 # Chạy với coverage
 uv run pytest tests/ --cov=src/dich_truyen --cov-report=html

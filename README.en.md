@@ -15,6 +15,7 @@ A command-line tool for crawling, translating, and exporting Chinese novels to V
 - 📕 **Ebook Export**: Convert to EPUB, AZW3, MOBI, PDF via Calibre
 - 🔄 **Resumable Operations**: Continue interrupted downloads/translations
 - ⚡ **Streaming Pipeline**: Concurrent crawl and translate with multiple workers
+- 🖥️ **Web UI**: Browse your book library and read translated chapters in the browser
 
 ### Advanced Techniques
 
@@ -123,6 +124,28 @@ Options:
   --force               Force re-process all chapters
 ```
 
+### `ui` - Web Interface
+
+```bash
+# Launch the web UI (auto-opens browser)
+uv run dich-truyen ui
+
+# Custom port and host
+uv run dich-truyen ui --port 9000 --host 0.0.0.0
+
+# Don't auto-open browser
+uv run dich-truyen ui --no-browser
+```
+
+> **Development mode:** Run the API server and Next.js dev server separately:
+> ```bash
+> # Terminal 1: API server
+> uv run dich-truyen ui --no-browser --port 8000
+> # Terminal 2: Frontend
+> cd web && npm run dev
+> # Open http://localhost:3000
+> ```
+
 ### `export` - Export to Ebook
 
 ```bash
@@ -206,17 +229,24 @@ books/
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
+- [Node.js](https://nodejs.org/) 18+ (for the web UI)
 - [Calibre](https://calibre-ebook.com/) (for ebook export)
 - OpenAI API key (or compatible endpoint)
 
 ## Development
 
 ```bash
-# Install dev dependencies
+# Install Python dependencies
 uv sync --dev
 
-# Run tests
+# Install frontend dependencies
+cd web && npm install
+
+# Run Python tests
 uv run pytest tests/ -v
+
+# Run frontend lint
+cd web && npm run lint
 
 # Run with coverage
 uv run pytest tests/ --cov=src/dich_truyen --cov-report=html
