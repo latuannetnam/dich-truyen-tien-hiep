@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, XCircle, Loader2 } from "lucide-react";
 import { getPipelineJob, cancelPipelineJob } from "@/lib/api";
@@ -13,7 +13,6 @@ import EventLog from "@/components/pipeline/EventLog";
 
 export default function PipelineMonitorPage() {
   const params = useParams();
-  const router = useRouter();
   const jobId = params.jobId as string;
 
   const [job, setJob] = useState<PipelineJob | null>(null);
@@ -50,12 +49,13 @@ export default function PipelineMonitorPage() {
         };
       });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestProgress]);
 
   // Update job status from terminal events
   useEffect(() => {
     const lastEvent = events.at(-1);
-    if (!lastEvent || !job) return;
+    if (!lastEvent) return;
 
     if (lastEvent.type === "job_completed") {
       setJob((prev) => prev ? { ...prev, status: "completed" } : prev);
