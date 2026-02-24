@@ -358,8 +358,11 @@ def style_generate(description: str, output: str) -> None:
 def ui(port: int, host: str, no_browser: bool) -> None:
     """Launch web UI in browser.
 
-    Starts the FastAPI server and opens the UI in your default browser.
+    Starts the FastAPI API server and the Next.js frontend,
+    then opens the UI in your default browser.
     """
+    import shutil
+    import subprocess
     import threading
     import time
     import webbrowser
@@ -372,20 +375,55 @@ def ui(port: int, host: str, no_browser: bool) -> None:
     config = get_config()
     app = create_app(books_dir=config.books_dir.resolve())
 
+    # Locate web/ directory relative to this source file
+    web_dir = Path(__file__).resolve().parent.parent.parent / "web"
+    if not web_dir.exists():
+        console.print(f"[red]Error: Web UI not found at {web_dir}[/red]")
+        console.print("[dim]Please ensure the 'web/' directory exists in the project root.[/dim]")
+        raise SystemExit(1)
+
+    if not (web_dir / "node_modules").exists():
+        console.print("[red]Error: Frontend dependencies not installed.[/red]")
+        console.print("[dim]Run: cd web && npm install[/dim]")
+        raise SystemExit(1)
+
+    npm_cmd = shutil.which("npm")
+    if npm_cmd is None:
+        console.print("[red]Error: npm not found. Please install Node.js 18+.[/red]")
+        raise SystemExit(1)
+
+    frontend_port = 3000
+
+    # Start Next.js dev server as a subprocess
+    next_proc = subprocess.Popen(
+        [npm_cmd, "run", "dev", "--", "--port", str(frontend_port)],
+        cwd=str(web_dir),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    # Auto-open browser pointing to the frontend
     if not no_browser:
 
         def open_browser() -> None:
-            time.sleep(1.5)
-            webbrowser.open(f"http://{host}:{port}")
+            time.sleep(3)
+            webbrowser.open(f"http://localhost:{frontend_port}")
 
         threading.Thread(target=open_browser, daemon=True).start()
 
     console.print("[bold green]🚀 Dịch Truyện UI starting...[/bold green]")
+    console.print(f"[blue]   UI:  http://localhost:{frontend_port}[/blue]")
     console.print(f"[blue]   API: http://{host}:{port}/api/docs[/blue]")
-    console.print(f"[blue]   UI:  http://{host}:{port}[/blue]")
     console.print("[dim]   Press Ctrl+C to stop[/dim]\n")
 
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    try:
+        uvicorn.run(app, host=host, port=port, log_level="info")
+    finally:
+        next_proc.terminate()
+        try:
+            next_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            next_proc.kill()
 
 
 if __name__ == "__main__":
