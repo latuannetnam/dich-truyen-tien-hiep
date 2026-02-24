@@ -236,3 +236,73 @@ def test_test_connection_no_key(tmp_path, monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is False
+
+
+# --- Glossary API tests ---
+
+
+@pytest.fixture
+def books_dir_with_glossary(books_dir):
+    """Extend books_dir with a glossary CSV file."""
+    import csv
+
+    book_dir = books_dir / "test-book-1"
+    glossary_path = book_dir / "glossary.csv"
+    with open(glossary_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["chinese", "vietnamese", "category", "notes"])
+        writer.writerow(["王林", "Vương Lâm", "character", "Main character"])
+        writer.writerow(["练气", "Luyện Khí", "realm", ""])
+    return books_dir
+
+
+def test_get_glossary(books_dir_with_glossary):
+    """GET /books/:id/glossary returns glossary entries."""
+    app = create_app(books_dir=books_dir_with_glossary)
+    client = TestClient(app)
+    response = client.get("/api/v1/books/test-book-1/glossary")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["entries"]) == 2
+    assert data["entries"][0]["chinese"] == "王林"
+
+
+def test_add_glossary_entry(books_dir_with_glossary):
+    """POST /books/:id/glossary adds a new entry."""
+    app = create_app(books_dir=books_dir_with_glossary)
+    client = TestClient(app)
+    response = client.post("/api/v1/books/test-book-1/glossary", json={
+        "chinese": "筑基", "vietnamese": "Trúc Cơ", "category": "realm",
+    })
+    assert response.status_code == 200
+    # Verify it was added
+    response = client.get("/api/v1/books/test-book-1/glossary")
+    assert len(response.json()["entries"]) == 3
+
+
+def test_delete_glossary_entry(books_dir_with_glossary):
+    """DELETE /books/:id/glossary/:term removes an entry."""
+    app = create_app(books_dir=books_dir_with_glossary)
+    client = TestClient(app)
+    response = client.delete("/api/v1/books/test-book-1/glossary/王林")
+    assert response.status_code == 200
+    response = client.get("/api/v1/books/test-book-1/glossary")
+    assert len(response.json()["entries"]) == 1
+
+
+def test_get_glossary_book_not_found(tmp_path):
+    """GET /books/:id/glossary returns 404 for unknown book."""
+    app = create_app(books_dir=tmp_path)
+    client = TestClient(app)
+    response = client.get("/api/v1/books/nonexistent/glossary")
+    assert response.status_code == 404
+
+
+def test_export_glossary_csv(books_dir_with_glossary):
+    """GET /books/:id/glossary/export returns CSV file."""
+    app = create_app(books_dir=books_dir_with_glossary)
+    client = TestClient(app)
+    response = client.get("/api/v1/books/test-book-1/glossary/export")
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert "王林" in response.text

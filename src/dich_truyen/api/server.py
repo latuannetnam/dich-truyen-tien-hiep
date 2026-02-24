@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from dich_truyen import __version__
 from dich_truyen.api import websocket
-from dich_truyen.api.routes import books, pipeline, settings
+from dich_truyen.api.routes import books, glossary, pipeline, settings
 from dich_truyen.services.config_service import ConfigService
 from dich_truyen.services.events import EventBus
 from dich_truyen.services.pipeline_service import PipelineService
@@ -47,6 +47,10 @@ def create_app(books_dir: Optional[Path] = None) -> FastAPI:
     config_service = ConfigService()
     settings.set_config_service(config_service)
     app.include_router(settings.router)
+
+    # Glossary routes
+    glossary.set_books_dir(books_dir or Path("books"))
+    app.include_router(glossary.router)
 
     # Store on app.state for WebSocket access
     app.state.event_bus = event_bus
