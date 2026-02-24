@@ -63,3 +63,9 @@ uv run dich-truyen export books/my-book --format azw3
 uv run dich-truyen glossary show
 uv run dich-truyen ui --port 8000 --no-browser
 ```
+
+## Caveats
+
+| Item | Detail |
+|------|--------|
+| **`ui` lifespan=off** | The `ui` command sets `lifespan="off"` in uvicorn config to suppress `CancelledError` traceback on Ctrl+C (Windows). If startup/shutdown hooks are added to the FastAPI app (e.g., DB pool, cache init), remove `lifespan="off"` and find an alternative way to suppress the shutdown traceback. See `cli.py` `ui()` function. |
