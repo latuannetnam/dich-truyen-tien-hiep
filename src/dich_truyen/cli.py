@@ -415,10 +415,23 @@ def ui(port: int, host: str, no_browser: bool) -> None:
     console.print(f"[blue]   UI:  http://localhost:{frontend_port}[/blue]")
     console.print(f"[blue]   API: http://{host}:{port}/api/docs[/blue]")
     console.print("[dim]   Press Ctrl+C to stop[/dim]\n")
+    import signal
+
+    config_uv = uvicorn.Config(app, host=host, port=port, log_level="info")
+    server = uvicorn.Server(config_uv)
+
+    # Disable uvicorn's built-in signal handlers to avoid ugly tracebacks
+    server.install_signal_handlers = lambda: None  # type: ignore[assignment]
+
+    # Install our own clean Ctrl+C handler
+    def _handle_sigint(signum: int, frame: object) -> None:
+        server.should_exit = True
+
+    signal.signal(signal.SIGINT, _handle_sigint)
 
     try:
-        uvicorn.run(app, host=host, port=port, log_level="info")
-    except KeyboardInterrupt:
+        server.run()
+    except SystemExit:
         pass
     finally:
         console.print("\n[dim]Shutting down...[/dim]")
