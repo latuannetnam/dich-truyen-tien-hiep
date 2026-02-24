@@ -29,7 +29,13 @@ export default function Home() {
   const completionPct =
     totalChapters > 0 ? Math.round((totalTranslated / totalChapters) * 100) : 0;
 
-  const recentBooks = books.slice(0, 3);
+  const recentBooks = [...books]
+    .sort((a, b) => {
+      const ta = a.updated_at ?? a.created_at ?? "";
+      const tb = b.updated_at ?? b.created_at ?? "";
+      return tb.localeCompare(ta);
+    })
+    .slice(0, 3);
 
   return (
     <div>
@@ -69,9 +75,19 @@ export default function Home() {
       )}
 
       {/* Recent Books */}
-      <h2 className="font-[var(--font-fira-code)] text-lg font-semibold text-[var(--text-primary)] mb-4">
-        Recent Books
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-[var(--font-fira-code)] text-lg font-semibold text-[var(--text-primary)]">
+          Recent Books
+        </h2>
+        {books.length > 3 && (
+          <Link
+            href="/library"
+            className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] text-sm font-medium transition-colors duration-150"
+          >
+            View all →
+          </Link>
+        )}
+      </div>
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
