@@ -5,87 +5,55 @@ trigger: always_on
 # Development Rules
 
 > **Note:** This file is gitignored. Use PowerShell to update it:
-> `powershell
+> ```powershell
 > $content = Get-Content ".agent\rules\dev.md" -Raw
 > # ... modify $content ...
 > Set-Content ".agent\rules\dev.md" $content -NoNewline
-> `
+> ```
 
-Always use uv for project management and unit testing.
+Always use `uv` for project management and unit testing.
 
-## App Architecture Quick Reference
+## Build & Test Commands
 
-**Pipeline:** `StreamingPipeline` = Concurrent CRAWL + TRANSLATE → EXPORT
-
-### Key Files
-
-| Component | Key Files | Purpose |
-|-----------|-----------|---------|
-| **Pipeline** | `pipeline/streaming.py` | Concurrent crawl/translate with queue |
-| **Crawl** | `crawler/pattern.py` | LLM CSS selector discovery |
-| | `crawler/downloader.py` | Chapter download with resume |
-| **Translate** | `translator/engine.py` | Translation orchestration & chunking |
-| | `translator/glossary.py` | Term management & auto-generation |
-| | `translator/style.py` | Style templates (custom YAML in `styles/`) |
-| **Export** | `exporter/epub_assembler.py` | Direct EPUB assembly |
-| | `exporter/calibre.py` | Calibre AZW3/MOBI/PDF conversion |
-| **CLI** | `cli.py` | Commands: pipeline, export, glossary, style |
-| **Config** | `config.py` | Pydantic settings & env vars |
-| **Progress** | `utils/progress.py` | BookProgress & Chapter status tracking |
-
-### CLI Commands
-
-```
-dich-truyen
-├── pipeline      # Main workflow (--crawl-only, --translate-only, --skip-export)
-├── export        # Standalone ebook export
-├── glossary      # show, export, import
-└── style         # list, generate
+```bash
+uv run pytest                          # All tests
+uv run pytest tests/test_crawler.py    # Single file
+uv run pytest -m "requires_network"    # Integration tests
+uv run ruff check .                    # Lint
+uv run ruff format .                   # Format
+uv run dich-truyen [command] [options] # Run CLI
 ```
 
-### Key Patterns
+## Code Style Essentials
 
-1. **Streaming Pipeline:** `StreamingPipeline.run()` creates crawler producer + N translator workers with shared queue. Glossary generated after first chapters crawled.
+- **Python:** 3.11+, line length 100 (Ruff enforced)
+- **Type hints:** Required on all functions
+- **Docstrings:** Google-style
+- **Naming:** `PascalCase` classes, `snake_case` functions/vars, `UPPER_CASE` constants, `_prefix` private
+- **Imports:** stdlib → third-party → local, absolute imports only
+- **Async:** Use `asyncio` + `httpx`; `async` fixtures with `@pytest.mark.asyncio`
+- **Errors:** Catch specific exceptions; use `rich.console` not `print()`
+- **Paths:** Always `pathlib.Path`, never `os.path`
+- **Config:** Pydantic models
+- **CLI:** Click with `@cli.command()`
+- **Output:** Rich for formatted terminal output
 
-2. **Glossary Sharing:** All workers share same `Glossary` object. Progressive extraction adds terms with `_glossary_lock`.
+## Memory Update Rule
 
-3. **Progress Tracking:** `BookProgress.load(book_dir)` → chapters have status: PENDING → CRAWLED → TRANSLATED.
+> **After any significant change, run the `/update-memory` workflow** to keep memory in sync.
 
-4. **Style Priority:** `styles/` directory checked BEFORE built-in styles.
+## Memory Modules
 
-### Common Modification Points
+Detailed knowledge is split into focused modules in `.agent/memory/`:
 
-- **Pipeline behavior:** `pipeline/streaming.py:run()` and `_translate_consumer()`
-- **Translation logic:** `translator/engine.py:translate_chunk_with_context_marker()`
-- **Glossary generation:** `glossary.py:generate_glossary_from_samples()`
-- **CLI commands:** `cli.py` with `@cli.command()` decorator
-
-### Environment Variables
-
-| Prefix | Purpose |
-|--------|---------|
-| `OPENAI_*` | LLM API (API_KEY, BASE_URL, MODEL) |
-| `TRANSLATION_GLOSSARY_*` | Glossary settings (samples, size) |
-| `PIPELINE_*` | Worker count, queue size |
-| `CALIBRE_*` | Calibre executable path |
-
-
-### Live Table Progress (Rich)
-
-For in-place updating progress displays:
-```python
-from rich.live import Live
-from rich.table import Table
-
-with Live(table, console=console, transient=True) as live:
-    while running:
-        live.update(build_new_table())  # Rebuild table with current stats
-```
-
-**Key rules:**
-- Use `transient=True` for clean output when done
-- Put progress in table `title`, status in `caption`
-- **NO `console.print()` inside Live** - causes scrolling
-- Store status in `PipelineStats.status_message` instead
-### Full Architecture
-See `docs/ARCHITECTURE.md` for detailed diagrams.
+| Module | Topic |
+|--------|-------|
+| [`architecture.md`](.agent/memory/architecture.md) | Pipeline overview, key files map, modification points |
+| [`crawling.md`](.agent/memory/crawling.md) | LLM pattern discovery, encoding, resume logic |
+| [`translation.md`](.agent/memory/translation.md) | Engine, glossary, chunking, TF-IDF, prompt structure |
+| [`export.md`](.agent/memory/export.md) | EPUB assembly, Calibre, output formats |
+| [`cli.md`](.agent/memory/cli.md) | CLI command tree, options, adding new commands |
+| [`config.md`](.agent/memory/config.md) | All env vars, Pydantic settings hierarchy |
+| [`progress.md`](.agent/memory/progress.md) | BookProgress, chapter status flow, Rich Live rules |
+| [`testing.md`](.agent/memory/testing.md) | Test commands, fixtures, async patterns |
+| [`styles.md`](.agent/memory/styles.md) | Style YAML schema, priority loading, creating styles |
