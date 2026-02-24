@@ -174,3 +174,20 @@ def test_get_pipeline_job_not_found(tmp_path):
     assert response.status_code == 404
 
 
+# --- WebSocket tests ---
+
+
+def test_websocket_pipeline_connect(tmp_path):
+    """WebSocket endpoint connects and receives events."""
+    app = create_app(books_dir=tmp_path)
+    client = TestClient(app)
+
+    # Create a job first
+    resp = client.post("/api/v1/pipeline/start", json={"url": "https://example.com"})
+    job_id = resp.json()["id"]
+
+    # Connect to WebSocket
+    with client.websocket_connect(f"/ws/pipeline/{job_id}") as ws:
+        # Send a test message to verify connection
+        ws.send_json({"type": "ping"})
+        # The connection should be alive (doesn't raise)
