@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Fira_Code, Fira_Sans } from "next/font/google";
 import "./globals.css";
-import Sidebar from "@/components/layout/Sidebar";
+import LayoutWrapper from "@/components/layout/LayoutWrapper";
 
 const firaCode = Fira_Code({
   variable: "--font-fira-code",
@@ -30,8 +30,7 @@ export default function RootLayout({
   return (
     <html lang="vi">
       <body className={`${firaCode.variable} ${firaSans.variable} antialiased`}>
-        <Sidebar />
-        <main className="ml-60 min-h-screen p-8">{children}</main>
+        <LayoutWrapper>{children}</LayoutWrapper>
       </body>
     </html>
   );
