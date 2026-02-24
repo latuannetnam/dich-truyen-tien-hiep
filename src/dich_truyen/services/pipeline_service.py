@@ -153,7 +153,7 @@ class PipelineService:
             # Create and run pipeline
             pipeline = StreamingPipeline(translator_workers=job["workers"])
 
-            # Hook into pipeline stats for event emission
+            # Hook into chapter status changes for event log
             original_update = pipeline._update_chapter_status
 
             async def emitting_update(chapter, status, error=None):
@@ -167,19 +167,13 @@ class PipelineService:
                         "status": status.value,
                     },
                 )
-                # Update job progress from pipeline stats
-                job["progress"] = {
-                    "total_chapters": pipeline.stats.total_chapters,
-                    "crawled": pipeline.stats.chapters_crawled,
-                    "translated": pipeline.stats.chapters_translated,
-                    "errors": pipeline.stats.crawl_errors
-                    + pipeline.stats.translate_errors,
-                    "worker_status": dict(pipeline.stats.worker_status),
-                    "glossary_count": pipeline.stats.glossary_count,
-                }
-                self._emit(job_id, "progress", job["progress"])
 
             pipeline._update_chapter_status = emitting_update
+
+            # Start periodic progress polling (mirrors CLI's update_display)
+            progress_task = asyncio.create_task(
+                self._emit_progress_periodically(job, pipeline)
+            )
 
             result = await pipeline.run(
                 book_dir=target_dir,
@@ -190,6 +184,13 @@ class PipelineService:
                 force=job["force"],
                 crawl_only=job["crawl_only"],
             )
+
+            # Stop periodic emitter
+            progress_task.cancel()
+            try:
+                await progress_task
+            except asyncio.CancelledError:
+                pass
 
             job["status"] = JobStatus.COMPLETED
             job["completed_at"] = time.time()
@@ -214,6 +215,37 @@ class PipelineService:
             job["completed_at"] = time.time()
             job["error"] = str(e)
             self._emit(job_id, "job_failed", {"error": str(e)})
+
+    async def _emit_progress_periodically(
+        self,
+        job: dict[str, Any],
+        pipeline: Any,
+        interval: float = 2.0,
+    ) -> None:
+        """Emit progress events periodically while pipeline runs.
+
+        Mirrors CLI's ``update_display()`` which polls stats every 1 second.
+        This ensures the WebSocket receives all stat changes including
+        worker_status updates from progress_callback, crawl_status, and
+        glossary updates that happen between chapter state transitions.
+        """
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                job["progress"] = {
+                    "total_chapters": pipeline.stats.total_chapters,
+                    "crawled": pipeline.stats.chapters_crawled,
+                    "translated": pipeline.stats.chapters_translated,
+                    "errors": pipeline.stats.crawl_errors
+                    + pipeline.stats.translate_errors,
+                    "worker_status": dict(pipeline.stats.worker_status),
+                    "glossary_count": pipeline.stats.glossary_count,
+                    "crawl_status": pipeline.stats.crawl_status,
+                    "status_message": pipeline.stats.status_message,
+                }
+                self._emit(job["id"], "progress", job["progress"])
+        except asyncio.CancelledError:
+            pass
 
     def _emit(self, job_id: str, event_type: str, data: dict) -> None:
         """Emit a pipeline event."""
