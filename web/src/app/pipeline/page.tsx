@@ -53,7 +53,7 @@ export default function PipelineListPage() {
   const pastJobs = jobs.filter((j) => j.status !== "running" && j.status !== "pending");
 
   return (
-    <div>
+    <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="font-[var(--font-fira-code)] text-3xl font-bold text-[var(--text-primary)] mb-1">

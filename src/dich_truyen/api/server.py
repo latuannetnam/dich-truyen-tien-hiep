@@ -9,11 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from dich_truyen import __version__
 from dich_truyen.api import websocket
 from dich_truyen.api.routes import books, export, glossary, pipeline, settings, styles
-from dich_truyen.services.export_service import ExportService
-from dich_truyen.services.style_service import StyleService
 from dich_truyen.services.config_service import ConfigService
 from dich_truyen.services.events import EventBus
+from dich_truyen.services.export_service import ExportService
 from dich_truyen.services.pipeline_service import PipelineService
+from dich_truyen.services.style_service import StyleService
 
 
 def create_app(
