@@ -795,6 +795,7 @@ function TaskLLMSection({
   ) => void;
   }) {
   const [expanded, setExpanded] = useState(false);
+  const [showKey, setShowKey] = useState(false);
   const hasOverrides = !!(config.model || config.base_url || (config.api_key && !config.api_key.includes("••••••••")));
 
   return (
@@ -825,16 +826,30 @@ function TaskLLMSection({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor={`${sectionKey}-apiKey`}>API Key</Label>
-              <input
-                id={`${sectionKey}-apiKey`}
-                type="password"
-                value={config.api_key}
-                onChange={(e) =>
-                  updateField(sectionKey, "api_key" as keyof AppSettings[typeof sectionKey], e.target.value)
-                }
-                placeholder="(use default)"
-                className={inputClass}
-              />
+              <div className="relative">
+                <input
+                  id={`${sectionKey}-apiKey`}
+                  type={showKey ? "text" : "password"}
+                  value={config.api_key}
+                  onChange={(e) =>
+                    updateField(sectionKey, "api_key" as keyof AppSettings[typeof sectionKey], e.target.value)
+                  }
+                  placeholder="(use default)"
+                  className={inputClass + " pr-12"}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors cursor-pointer"
+                  aria-label={showKey ? "Hide API key" : "Show API key"}
+                >
+                  {showKey ? (
+                    <EyeOff size={18} aria-hidden="true" />
+                  ) : (
+                    <Eye size={18} aria-hidden="true" />
+                  )}
+                </button>
+              </div>
             </div>
             <div>
               <Label htmlFor={`${sectionKey}-baseUrl`}>Base URL</Label>

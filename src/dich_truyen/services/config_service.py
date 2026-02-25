@@ -24,14 +24,19 @@ class ConfigService:
     def get_settings(self) -> dict[str, Any]:
         """Get current configuration as a nested dict.
 
+        Reloads from .env on every call so the UI always reflects
+        the actual file contents.
+
         Returns:
             Dict with all configuration sections.
             API keys are masked for security.
         """
+        # Always reload from .env so we pick up external edits
+        set_config(AppConfig.load(self._env_file))
         config = get_config()
         return {
             "llm": {
-                "api_key": self._mask_key(config.llm.api_key),
+                "api_key": self._mask_key_optional(config.llm.api_key),
                 "base_url": config.llm.base_url,
                 "model": config.llm.model,
                 "max_tokens": config.llm.max_tokens,
@@ -76,21 +81,21 @@ class ConfigService:
                 "path": config.calibre.path,
             },
             "crawler_llm": {
-                "api_key": self._mask_key(config.crawler_llm.api_key),
+                "api_key": self._mask_key_optional(config.crawler_llm.api_key),
                 "base_url": config.crawler_llm.base_url,
                 "model": config.crawler_llm.model,
                 "max_tokens": config.crawler_llm.max_tokens,
                 "temperature": config.crawler_llm.temperature,
             },
             "glossary_llm": {
-                "api_key": self._mask_key(config.glossary_llm.api_key),
+                "api_key": self._mask_key_optional(config.glossary_llm.api_key),
                 "base_url": config.glossary_llm.base_url,
                 "model": config.glossary_llm.model,
                 "max_tokens": config.glossary_llm.max_tokens,
                 "temperature": config.glossary_llm.temperature,
             },
             "translator_llm": {
-                "api_key": self._mask_key(config.translator_llm.api_key),
+                "api_key": self._mask_key_optional(config.translator_llm.api_key),
                 "base_url": config.translator_llm.base_url,
                 "model": config.translator_llm.model,
                 "max_tokens": config.translator_llm.max_tokens,
@@ -174,6 +179,18 @@ class ConfigService:
     def _mask_key(self, key: str) -> str:
         """Mask API key for display."""
         if not key or len(key) < 8:
+            return "••••••••"
+        return key[:4] + "••••" + key[-4:]
+
+    def _mask_key_optional(self, key: str) -> str:
+        """Mask API key for optional/override fields.
+
+        Returns empty string when key is not set, so the frontend
+        can show a placeholder like '(use default)'.
+        """
+        if not key:
+            return ""
+        if len(key) < 8:
             return "••••••••"
         return key[:4] + "••••" + key[-4:]
 

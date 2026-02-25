@@ -1,0 +1,2 @@
+- Internalize web UI: support English and Vietnamese
+- UI Theme: Dark and Light mode

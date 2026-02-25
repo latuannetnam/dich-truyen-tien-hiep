@@ -418,7 +418,7 @@ def ui(port: int, host: str, no_browser: bool) -> None:
     import signal
 
     config_uv = uvicorn.Config(
-        app, host=host, port=port, log_level="info", lifespan="off"
+        app, host=host, port=port, log_level="info", lifespan="on"
     )
     server = uvicorn.Server(config_uv)
 

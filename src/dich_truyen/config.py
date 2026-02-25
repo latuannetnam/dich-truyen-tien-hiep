@@ -16,7 +16,7 @@ class LLMConfig(BaseSettings):
 
     api_key: str = Field(default="", description="OpenAI API key")
     base_url: str = Field(default="https://api.openai.com/v1", description="API base URL")
-    model: str = Field(default="gpt-4o", description="Model name")
+    model: str = Field(default="gpt-4.1", description="Model name")
     max_tokens: int = Field(default=4096, description="Max tokens per request")
     temperature: float = Field(default=0.7, description="Temperature for generation")
 
