@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Full feature parity with premium feel — Style Manager, Export controls, animations, error handling, plus user-requested i18n and theme toggle.
+**Goal:** Full feature parity with premium feel — Style Manager, Export controls, animations, and error handling.
 
-**Architecture:** Add `styles` and `export` API routes using existing service wrappers. Two new frontend pages. Add CSS animation system and comprehensive error/loading states across all existing pages. Finally, add i18n and light/dark theme support.
+**Architecture:** Add `styles` and `export` API routes using existing service wrappers. One new frontend page. Add CSS animation system and comprehensive error/loading states across all existing pages.
 
 **Tech Stack:** Python (FastAPI, Pydantic) · TypeScript (React, Next.js 15) · Vanilla CSS with design tokens · Lucide React icons
 
@@ -23,8 +23,6 @@
 | Export API | ❌ No route file, no frontend controls |
 | CSS animations | ❌ No `@keyframes`, no `prefers-reduced-motion` |
 | Error boundaries | ❌ No global error handling |
-| i18n | ❌ English only |
-| Theme toggle | ❌ Dark mode only |
 
 ### Key Constraints
 
@@ -680,110 +678,13 @@ git commit -m "feat(web): add ErrorBoundary, EmptyState, and loading improvement
 
 ---
 
-## Task 7: Translation Pipeline Resume (from TODO)
+## Deferred to Phase 5
 
-> [!IMPORTANT]
-> User requirement: "Translation pipeline: continue pending translations (the same as CLI pipeline)"
+The following tasks were originally planned for Phase 4 but deferred:
 
-**Files:**
-- Modify: `web/src/app/books/[id]/page.tsx`
-- The pipeline resume API already exists at `POST /api/v1/pipeline/start` with `book_dir` and `translate_only` options.
-
-**Step 1: Add "Resume Translation" button to Book Detail**
-
-When a book has chapters with `status === "crawled"` (crawled but not translated), show a prominent "Resume Translation" button in the action bar alongside "Continue Reading" and "Edit Glossary". Clicking it calls `startPipeline({ book_dir: book.id, translate_only: true })` and navigates to the pipeline monitor.
-
-**Step 2: Verify in browser**
-
-Start the app and verify the button appears for books with crawled-only chapters.
-
-**Step 3: Commit**
-
-```bash
-git add web/src/app/books/[id]/page.tsx
-git commit -m "feat(web): add Resume Translation button to Book Detail"
-```
-
----
-
-## Task 8: Light/Dark Theme Toggle (from TODO)
-
-**Files:**
-- Modify: `web/src/app/globals.css` (add light theme tokens)
-- Create: `web/src/components/ui/ThemeToggle.tsx`
-- Modify: `web/src/app/layout.tsx` (add theme provider)
-
-**Step 1: Add light mode CSS variables**
-
-Currently all CSS tokens are dark-mode values. Add a data attribute toggle:
-
-```css
-:root[data-theme="light"] {
-  --bg-primary: #FAFAFA;
-  --bg-surface: #FFFFFF;
-  --bg-elevated: #F5F5F5;
-  --text-primary: #0F172A;
-  --text-secondary: #475569;
-  --text-muted: #94A3B8;
-  --text-tertiary: #64748B;
-  --border-default: #E2E8F0;
-  /* ... all tokens with light values */
-}
-```
-
-**Step 2: Create ThemeToggle component**
-
-A button that toggles `data-theme` on `<html>` and persists to localStorage:
-
-```tsx
-"use client";
-import { useState, useEffect } from "react";
-import { Sun, Moon } from "lucide-react";
-
-export default function ThemeToggle() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-
-  useEffect(() => {
-    const saved = localStorage.getItem("dich-truyen-theme") as "dark" | "light" | null;
-    if (saved) {
-      setTheme(saved);
-      document.documentElement.setAttribute("data-theme", saved);
-    }
-  }, []);
-
-  const toggle = () => {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    document.documentElement.setAttribute("data-theme", next);
-    localStorage.setItem("dich-truyen-theme", next);
-  };
-
-  return (
-    <button onClick={toggle} className="p-2 rounded-lg cursor-pointer ..." title="Toggle theme">
-      {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-    </button>
-  );
-}
-```
-
-**Step 3: Add to sidebar**
-
-Place `<ThemeToggle />` at the bottom of the sidebar in `layout.tsx`.
-
-**Step 4: Verify both themes**
-
-Start the app, toggle theme, verify:
-- All text contrast meets 4.5:1 minimum
-- Borders visible in both modes
-- Cards/surfaces distinguishable from background
-- No invisible elements
-
-**Step 5: Commit**
-
-```bash
-git add web/src/app/globals.css web/src/components/ui/ThemeToggle.tsx web/src/app/layout.tsx
-git commit -m "feat(web): add light/dark theme toggle"
-```
+- **Translation Pipeline Resume** — "Resume Translation" button on Book Detail page (API already exists)
+- **Light/Dark Theme Toggle** — `ThemeToggle` component + light mode CSS variables
+- **i18n** — English/Vietnamese language switching
 
 ---
 
@@ -819,6 +720,4 @@ uv run dich-truyen ui
 2. **Export controls** (`/books/{id}`): format picker, export button, download link
 3. **Animations**: fade-in on page load, stagger on card grids, skeleton loading
 4. **Error handling**: ErrorBoundary on API failure, EmptyState on empty lists
-5. **Resume Translation**: button appears for books with crawled chapters
-6. **Theme toggle**: dark ↔ light, persists on reload, all tokens update
-7. **CLI unchanged**: `uv run dich-truyen pipeline --help` still works
+5. **CLI unchanged**: `uv run dich-truyen pipeline --help` still works
