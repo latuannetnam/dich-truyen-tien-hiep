@@ -35,8 +35,14 @@ async def pipeline_websocket(websocket: WebSocket, job_id: str) -> None:
                 await websocket.send_json(event.to_dict())
             except asyncio.TimeoutError:
                 # Send heartbeat to keep connection alive
-                await websocket.send_json({"type": "heartbeat"})
+                try:
+                    await websocket.send_json({"type": "heartbeat"})
+                except (WebSocketDisconnect, Exception):
+                    break
             except WebSocketDisconnect:
+                break
+            except Exception:
+                # Client disconnected mid-send
                 break
     finally:
         event_bus.unsubscribe(sub_id)
