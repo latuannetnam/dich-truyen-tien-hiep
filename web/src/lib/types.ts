@@ -198,3 +198,7 @@ export interface StyleDetail {
   examples: { chinese: string; vietnamese: string }[];
 }
 
+/** Export status for a book. */
+export interface ExportStatus {
+  formats: Record<string, string>;
+}

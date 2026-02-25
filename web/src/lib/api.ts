@@ -10,6 +10,7 @@ import type {
   GlossaryEntryType,
   StyleSummary,
   StyleDetail,
+  ExportStatus,
 } from "./types";
 
 const API_BASE = "/api/v1";
@@ -167,4 +168,25 @@ export async function getStyles(): Promise<StyleSummary[]> {
 
 export async function getStyle(name: string): Promise<StyleDetail> {
   return fetchJson<StyleDetail>(`${API_BASE}/styles/${name}`);
+}
+
+// --- Export API ---
+
+export async function getExportStatus(bookId: string): Promise<ExportStatus> {
+  return fetchJson<ExportStatus>(`${API_BASE}/books/${bookId}/export`);
+}
+
+export async function startExport(
+  bookId: string,
+  format: string
+): Promise<{ success: boolean; output_path?: string; error_message?: string }> {
+  const res = await fetch(`${API_BASE}/books/${bookId}/export?format=${format}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+export function getExportDownloadUrl(bookId: string, filename: string): string {
+  return `${API_BASE}/books/${bookId}/export/download/${filename}`;
 }

@@ -11,10 +11,17 @@ import {
   AlertCircle,
   BookOpen,
   PlayCircle,
+  Package,
+  Loader2,
+  FileDown,
+  Check,
 } from "lucide-react";
-import { getBook } from "@/lib/api";
-import type { BookDetail } from "@/lib/types";
+import { getBook, getExportStatus, startExport, getExportDownloadUrl } from "@/lib/api";
+import type { BookDetail, ExportStatus } from "@/lib/types";
 import ChapterTable from "@/components/book/ChapterTable";
+import { useToast } from "@/components/ui/ToastProvider";
+
+const EXPORT_FORMATS = ["epub", "azw3", "mobi", "pdf"];
 
 export default function BookDetailPage() {
   const params = useParams();
@@ -24,12 +31,22 @@ export default function BookDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastReadChapter, setLastReadChapter] = useState<number | null>(null);
 
+  // Export state
+  const [exportStatus, setExportStatus] = useState<ExportStatus | null>(null);
+  const [selectedFormat, setSelectedFormat] = useState("epub");
+  const [exporting, setExporting] = useState(false);
+  const toast = useToast();
+
   useEffect(() => {
     if (bookId) {
       getBook(bookId)
         .then(setBook)
         .catch((err) => setError(err.message))
         .finally(() => setLoading(false));
+
+      getExportStatus(bookId)
+        .then(setExportStatus)
+        .catch(() => {}); // silently fail — export status is optional
 
       // Check for last-read chapter
       const saved = localStorage.getItem(`dich-truyen-last-read-${bookId}`);
@@ -38,6 +55,25 @@ export default function BookDetailPage() {
       }
     }
   }, [bookId]);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const result = await startExport(bookId, selectedFormat);
+      if (result.success) {
+        toast.showSuccess(`Export to ${selectedFormat.toUpperCase()} completed!`);
+        // Refresh export status
+        const updated = await getExportStatus(bookId);
+        setExportStatus(updated);
+      } else {
+        toast.showError(result.error_message || "Export failed");
+      }
+    } catch (err) {
+      toast.showError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -113,6 +149,10 @@ export default function BookDetailPage() {
       color: "var(--color-error)",
     },
   ];
+
+  const existingExports = exportStatus?.formats
+    ? Object.entries(exportStatus.formats)
+    : [];
 
   return (
     <div>
@@ -196,6 +236,86 @@ export default function BookDetailPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* Export section */}
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-6 mb-8">
+        <div className="flex items-center gap-2 mb-4">
+          <Package size={18} className="text-[var(--color-primary)]" />
+          <h2 className="font-[var(--font-fira-code)] text-lg font-semibold text-[var(--text-primary)]">
+            Export
+          </h2>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          {/* Format selector */}
+          <div className="flex gap-2">
+            {EXPORT_FORMATS.map((fmt) => (
+              <button
+                key={fmt}
+                onClick={() => setSelectedFormat(fmt)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium uppercase tracking-wider
+                  transition-all duration-150 cursor-pointer
+                  ${
+                    selectedFormat === fmt
+                      ? "bg-[var(--color-primary)] text-white"
+                      : "bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-hover)]"
+                  }`}
+              >
+                {fmt}
+              </button>
+            ))}
+          </div>
+
+          {/* Export button */}
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]
+              text-white rounded-lg px-4 py-1.5 text-sm font-medium transition-colors cursor-pointer
+              disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Package size={14} />
+                Export {selectedFormat.toUpperCase()}
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Existing exports */}
+        {existingExports.length > 0 && (
+          <div>
+            <p className="text-[var(--text-muted)] text-xs uppercase tracking-wider mb-2">
+              Available Downloads
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {existingExports.map(([fmt, path]) => {
+                const filename = path.split(/[\\/]/).pop() || `export.${fmt}`;
+                return (
+                  <a
+                    key={fmt}
+                    href={getExportDownloadUrl(bookId, filename)}
+                    className="inline-flex items-center gap-2 bg-[var(--bg-elevated)] hover:bg-[var(--border-hover)]
+                      text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-lg px-3 py-2
+                      text-sm transition-colors"
+                    download
+                  >
+                    <FileDown size={14} />
+                    <span className="font-[var(--font-fira-code)] text-xs uppercase">{fmt}</span>
+                    <Check size={12} className="text-[var(--color-success)]" />
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Chapter table */}
