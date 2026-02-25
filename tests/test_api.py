@@ -349,3 +349,26 @@ def test_get_style_not_found():
     client = TestClient(app)
     response = client.get("/api/v1/styles/nonexistent-style-xyz")
     assert response.status_code == 404
+
+
+# --- Export API tests ---
+
+
+def test_get_export_status(books_dir):
+    """Get export status for a book."""
+    app = create_app(books_dir=books_dir)
+    client = TestClient(app)
+    response = client.get("/api/v1/books/test-book-1/export")
+    assert response.status_code == 200
+    data = response.json()
+    assert "formats" in data
+
+
+def test_get_supported_formats(tmp_path):
+    """Get supported export formats."""
+    app = create_app(books_dir=tmp_path)
+    client = TestClient(app)
+    response = client.get("/api/v1/export/formats")
+    assert response.status_code == 200
+    data = response.json()
+    assert "epub" in data

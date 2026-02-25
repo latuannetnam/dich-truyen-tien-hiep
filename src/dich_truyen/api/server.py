@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from dich_truyen import __version__
 from dich_truyen.api import websocket
-from dich_truyen.api.routes import books, glossary, pipeline, settings, styles
+from dich_truyen.api.routes import books, export, glossary, pipeline, settings, styles
+from dich_truyen.services.export_service import ExportService
 from dich_truyen.services.style_service import StyleService
 from dich_truyen.services.config_service import ConfigService
 from dich_truyen.services.events import EventBus
@@ -60,6 +61,11 @@ def create_app(
     style_service = StyleService()
     styles.set_style_service(style_service)
     app.include_router(styles.router)
+
+    # Export routes
+    export_service = ExportService(books_dir or Path("books"))
+    export.set_export_service(export_service)
+    app.include_router(export.router)
 
     # Store on app.state for WebSocket access
     app.state.event_bus = event_bus
