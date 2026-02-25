@@ -107,24 +107,52 @@ export interface AppSettings {
     delay_ms: number;
     max_retries: number;
     timeout_seconds: number;
+    user_agent: string;
   };
   translation: {
     chunk_size: number;
     chunk_overlap: number;
-    enable_polish_pass: boolean;
     progressive_glossary: boolean;
+    enable_glossary_annotation: boolean;
+    enable_state_tracking: boolean;
+    state_tracking_max_retries: number;
+    glossary_sample_chapters: number;
+    glossary_sample_size: number;
+    glossary_min_entries: number;
+    glossary_max_entries: number;
+    glossary_random_sample: boolean;
+    enable_polish_pass: boolean;
     polish_temperature: number;
+    polish_max_retries: number;
   };
   pipeline: {
     translator_workers: number;
     queue_size: number;
     crawl_delay_ms: number;
+    glossary_wait_timeout: number;
+    glossary_batch_interval: number;
+    glossary_scorer_rebuild_threshold: number;
   };
   export: {
     parallel_workers: number;
     volume_size: number;
     fast_mode: boolean;
   };
+  calibre: {
+    path: string;
+  };
+  crawler_llm: TaskLLMConfig;
+  glossary_llm: TaskLLMConfig;
+  translator_llm: TaskLLMConfig;
+}
+
+/** Task-specific LLM override config. */
+export interface TaskLLMConfig {
+  api_key: string;
+  base_url: string;
+  model: string;
+  max_tokens: number;
+  temperature: number;
 }
 
 /** Test connection result. */

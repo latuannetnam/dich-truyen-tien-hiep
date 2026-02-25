@@ -25,7 +25,7 @@ class ConfigService:
         """Get current configuration as a nested dict.
 
         Returns:
-            Dict with sections: llm, crawler, translation, pipeline, export.
+            Dict with all configuration sections.
             API keys are masked for security.
         """
         config = get_config()
@@ -41,23 +41,60 @@ class ConfigService:
                 "delay_ms": config.crawler.delay_ms,
                 "max_retries": config.crawler.max_retries,
                 "timeout_seconds": config.crawler.timeout_seconds,
+                "user_agent": config.crawler.user_agent,
             },
             "translation": {
                 "chunk_size": config.translation.chunk_size,
                 "chunk_overlap": config.translation.chunk_overlap,
-                "enable_polish_pass": config.translation.enable_polish_pass,
                 "progressive_glossary": config.translation.progressive_glossary,
+                "enable_glossary_annotation": config.translation.enable_glossary_annotation,
+                "enable_state_tracking": config.translation.enable_state_tracking,
+                "state_tracking_max_retries": config.translation.state_tracking_max_retries,
+                "glossary_sample_chapters": config.translation.glossary_sample_chapters,
+                "glossary_sample_size": config.translation.glossary_sample_size,
+                "glossary_min_entries": config.translation.glossary_min_entries,
+                "glossary_max_entries": config.translation.glossary_max_entries,
+                "glossary_random_sample": config.translation.glossary_random_sample,
+                "enable_polish_pass": config.translation.enable_polish_pass,
                 "polish_temperature": config.translation.polish_temperature,
+                "polish_max_retries": config.translation.polish_max_retries,
             },
             "pipeline": {
                 "translator_workers": config.pipeline.translator_workers,
                 "queue_size": config.pipeline.queue_size,
                 "crawl_delay_ms": config.pipeline.crawl_delay_ms,
+                "glossary_wait_timeout": config.pipeline.glossary_wait_timeout,
+                "glossary_batch_interval": config.pipeline.glossary_batch_interval,
+                "glossary_scorer_rebuild_threshold": config.pipeline.glossary_scorer_rebuild_threshold,
             },
             "export": {
                 "parallel_workers": config.export.parallel_workers,
                 "volume_size": config.export.volume_size,
                 "fast_mode": config.export.fast_mode,
+            },
+            "calibre": {
+                "path": config.calibre.path,
+            },
+            "crawler_llm": {
+                "api_key": self._mask_key(config.crawler_llm.api_key),
+                "base_url": config.crawler_llm.base_url,
+                "model": config.crawler_llm.model,
+                "max_tokens": config.crawler_llm.max_tokens,
+                "temperature": config.crawler_llm.temperature,
+            },
+            "glossary_llm": {
+                "api_key": self._mask_key(config.glossary_llm.api_key),
+                "base_url": config.glossary_llm.base_url,
+                "model": config.glossary_llm.model,
+                "max_tokens": config.glossary_llm.max_tokens,
+                "temperature": config.glossary_llm.temperature,
+            },
+            "translator_llm": {
+                "api_key": self._mask_key(config.translator_llm.api_key),
+                "base_url": config.translator_llm.base_url,
+                "model": config.translator_llm.model,
+                "max_tokens": config.translator_llm.max_tokens,
+                "temperature": config.translator_llm.temperature,
             },
         }
 
@@ -80,6 +117,10 @@ class ConfigService:
             "translation": "TRANSLATION_",
             "pipeline": "PIPELINE_",
             "export": "EXPORT_",
+            "calibre": "CALIBRE_",
+            "crawler_llm": "CRAWLER_LLM_",
+            "glossary_llm": "GLOSSARY_LLM_",
+            "translator_llm": "TRANSLATOR_LLM_",
         }
 
         for section, values in updates.items():
