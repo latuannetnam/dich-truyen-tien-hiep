@@ -1,6 +1,7 @@
 # In Progress
-- Translation pipeline: continue pending translations (the same as CLI pipeline)
-- Internalize web UI: support English and Vietnamese
+- Refactor CLI logging: use linear log instead of Rich log for ease of debugging with Web UI
+- Full pipeline resume: continue pending pipeline - crawling, translating, and exporting (the same as CLI pipeline)
+- i18n for web UI: support English and Vietnamese
 - UI Theme: Dark and Light mode
 
 # Done
