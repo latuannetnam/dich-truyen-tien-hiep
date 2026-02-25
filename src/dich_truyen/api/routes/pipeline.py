@@ -45,6 +45,12 @@ async def start_pipeline(request: StartPipelineRequest) -> dict:
             detail="Either 'url' or 'book_dir' is required",
         )
 
+    if request.crawl_only and request.translate_only:
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot use both 'crawl_only' and 'translate_only'",
+        )
+
     job = _pipeline_service.create_job(
         url=request.url,
         book_dir=request.book_dir,

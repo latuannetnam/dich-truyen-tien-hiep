@@ -229,8 +229,8 @@ export default function NewTranslationPage() {
             <div className="grid grid-cols-2 gap-4">
               {[
                 { label: "Auto-generate glossary", checked: autoGlossary, onChange: setAutoGlossary },
-                { label: "Crawl only", checked: crawlOnly, onChange: setCrawlOnly },
-                { label: "Translate only", checked: translateOnly, onChange: setTranslateOnly },
+                { label: "Crawl only", checked: crawlOnly, onChange: (v: boolean) => { setCrawlOnly(v); if (v) setTranslateOnly(false); } },
+                { label: "Translate only", checked: translateOnly, onChange: (v: boolean) => { setTranslateOnly(v); if (v) setCrawlOnly(false); } },
                 { label: "Force re-process", checked: force, onChange: setForce },
               ].map((opt) => (
                 <label
