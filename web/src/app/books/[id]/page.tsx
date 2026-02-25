@@ -10,6 +10,7 @@ import {
   Clock,
   AlertCircle,
   BookOpen,
+  PlayCircle,
 } from "lucide-react";
 import { getBook } from "@/lib/api";
 import type { BookDetail } from "@/lib/types";
@@ -21,6 +22,7 @@ export default function BookDetailPage() {
   const [book, setBook] = useState<BookDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastReadChapter, setLastReadChapter] = useState<number | null>(null);
 
   useEffect(() => {
     if (bookId) {
@@ -28,6 +30,12 @@ export default function BookDetailPage() {
         .then(setBook)
         .catch((err) => setError(err.message))
         .finally(() => setLoading(false));
+
+      // Check for last-read chapter
+      const saved = localStorage.getItem(`dich-truyen-last-read-${bookId}`);
+      if (saved) {
+        setLastReadChapter(parseInt(saved, 10));
+      }
     }
   }, [bookId]);
 
@@ -146,6 +154,15 @@ export default function BookDetailPage() {
 
       {/* Action buttons */}
       <div className="flex gap-3 mb-6">
+        {lastReadChapter !== null && (
+          <Link
+            href={`/books/${book.id}/read?chapter=${lastReadChapter}`}
+            className="inline-flex items-center gap-2 bg-[var(--color-cta)] hover:bg-[var(--color-cta-hover)] text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+          >
+            <PlayCircle size={14} aria-hidden="true" />
+            Continue Reading (Ch. {lastReadChapter})
+          </Link>
+        )}
         <Link
           href={`/books/${book.id}/glossary`}
           className="inline-flex items-center gap-2 border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] rounded-lg px-4 py-2 text-sm transition-colors"

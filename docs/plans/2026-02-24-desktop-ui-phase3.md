@@ -6,32 +6,34 @@
 
 **Architecture:** Add `ConfigService` and `GlossaryService` to the service layer. New API routes for settings CRUD and glossary CRUD. Three new frontend pages: Settings, Glossary Editor, enhanced Reader. CLI remains unchanged — settings still read from `.env`, glossary uses same CSV format.
 
-**Tech Stack:** Python (FastAPI, Pydantic) · TypeScript (React, Next.js 15) · Tailwind CSS · Lucide React icons
+**Tech Stack:** Python (FastAPI, Pydantic) · TypeScript (React, Next.js 15) · Vanilla CSS with design tokens · Lucide React icons
 
 **Design Doc:** [desktop-ui-design.md](file:///d:/latuan/Programming/dich-truyen-tien-hiep/docs/plans/2026-02-24-desktop-ui-design.md) → Phase 3
 
 **Phase 2 Plan:** [desktop-ui-phase2.md](file:///d:/latuan/Programming/dich-truyen-tien-hiep/docs/plans/2026-02-24-desktop-ui-phase2.md) — Already implemented
 
-### Current State (Phase 2 Complete)
+### Current State (Updated 2026-02-25)
 
 | Component | Status |
 |-----------|--------|
-| FastAPI server (`api/server.py`) | ✅ Book/chapter + pipeline endpoints |
-| Service layer | ✅ `EventBus`, `PipelineService` |
+| FastAPI server (`api/server.py`) | ✅ Book/chapter + pipeline + settings + glossary endpoints |
+| Service layer | ✅ `EventBus`, `PipelineService`, `ConfigService`, `GlossaryService` |
 | WebSocket | ✅ Pipeline event streaming |
 | Next.js frontend | ✅ Dashboard, Library, Book Detail, Reader, Pipeline Monitor, Wizard |
 | Side-by-side Reader | ✅ Toggle exists in `ReaderView.tsx` (basic) |
-| Settings page | ❌ Route exists in sidebar, no page |
-| Glossary editor | ❌ Does not exist |
-| `ConfigService` | ❌ Does not exist |
-| `GlossaryService` | ❌ Does not exist |
+| Settings page | ✅ Basic + Advanced tabs with all 9 config sections |
+| Glossary editor | ✅ Full CRUD with search/filter, import/export CSV |
+| `ConfigService` | ✅ Auto-generated from `SECTIONS` registry |
+| `GlossaryService` | ✅ Exists at `services/glossary_service.py` |
+| Enhanced Reader | ✅ Paragraph alignment, synced scroll, chapter dropdown, reading progress |
+| `ExportService` / `StyleService` / `BookService` | ✅ All extracted to `services/` |
 
 ### Key Constraints
 
 - CLI must remain 100% functional after every task
 - Settings reads/writes `.env` file — same file CLI uses
 - Glossary uses existing `Glossary` class CSV format
-- All tests pass (`uv run pytest tests/ -v`)
+- All tests pass (`uv run pytest tests/ -v`) — currently 22 passing
 - Side-by-side reader enhancement builds on existing `ReaderView.tsx`
 
 > [!IMPORTANT]
@@ -210,7 +212,7 @@ The side-by-side reader already exists in `ReaderView.tsx`. Phase 3 enhancements
 
 ---
 
-## Task 1: ConfigService + Settings API
+## Task 1: ConfigService + Settings API ✅ DONE
 
 **Files:**
 - Create: `src/dich_truyen/services/config_service.py`
@@ -273,181 +275,19 @@ Expected: FAIL — 404 Not Found
 
 **Step 3: Implement ConfigService**
 
-Create `src/dich_truyen/services/config_service.py`:
+Create `src/dich_truyen/services/config_service.py`.
 
-```python
-"""Configuration service for web UI.
-
-Provides read/write access to app configuration. Reads from the in-memory
-AppConfig and writes changes back to the .env file so CLI picks them up too.
-"""
-
-import os
-from pathlib import Path
-from typing import Any, Optional
-
-from dich_truyen.config import AppConfig, get_config, set_config
-
-
-class ConfigService:
-    """Read and update application configuration.
-
-    Updates are written to .env for persistence. The in-memory config
-    is also refreshed so the running server picks up changes immediately.
-    """
-
-    def __init__(self, env_file: Optional[Path] = None) -> None:
-        self._env_file = env_file or Path(".env")
-
-    def get_settings(self) -> dict[str, Any]:
-        """Get current configuration as a nested dict.
-
-        Returns:
-            Dict with sections: llm, crawler, translation, pipeline, export.
-            API keys are masked for security.
-        """
-        config = get_config()
-        return {
-            "llm": {
-                "api_key": self._mask_key(config.llm.api_key),
-                "base_url": config.llm.base_url,
-                "model": config.llm.model,
-                "max_tokens": config.llm.max_tokens,
-                "temperature": config.llm.temperature,
-            },
-            "crawler": {
-                "delay_ms": config.crawler.delay_ms,
-                "max_retries": config.crawler.max_retries,
-                "timeout_seconds": config.crawler.timeout_seconds,
-            },
-            "translation": {
-                "chunk_size": config.translation.chunk_size,
-                "chunk_overlap": config.translation.chunk_overlap,
-                "enable_polish_pass": config.translation.enable_polish_pass,
-                "progressive_glossary": config.translation.progressive_glossary,
-                "polish_temperature": config.translation.polish_temperature,
-            },
-            "pipeline": {
-                "translator_workers": config.pipeline.translator_workers,
-                "queue_size": config.pipeline.queue_size,
-                "crawl_delay_ms": config.pipeline.crawl_delay_ms,
-            },
-            "export": {
-                "parallel_workers": config.export.parallel_workers,
-                "volume_size": config.export.volume_size,
-                "fast_mode": config.export.fast_mode,
-            },
-        }
-
-    def update_settings(self, updates: dict[str, Any]) -> dict[str, Any]:
-        """Update configuration from a partial dict.
-
-        Args:
-            updates: Nested dict matching get_settings() structure.
-                     Only provided keys are updated.
-
-        Returns:
-            Updated full settings dict.
-        """
-        env_vars: dict[str, str] = {}
-
-        # Map nested dict keys to env var names
-        section_prefix_map = {
-            "llm": "OPENAI_",
-            "crawler": "CRAWLER_",
-            "translation": "TRANSLATION_",
-            "pipeline": "PIPELINE_",
-            "export": "EXPORT_",
-        }
-
-        for section, values in updates.items():
-            if not isinstance(values, dict):
-                continue
-            prefix = section_prefix_map.get(section, "")
-            for key, value in values.items():
-                # Skip masked API keys (user didn't change them)
-                if key == "api_key" and isinstance(value, str) and "••" in value:
-                    continue
-                env_name = f"{prefix}{key.upper()}"
-                env_vars[env_name] = str(value)
-
-        # Write to .env file
-        self._update_env_file(env_vars)
-
-        # Update environment and reload config
-        for name, value in env_vars.items():
-            os.environ[name] = value
-        set_config(AppConfig.load(self._env_file))
-
-        return self.get_settings()
-
-    def test_connection(self) -> dict[str, Any]:
-        """Test LLM API connection.
-
-        Returns:
-            Dict with 'success' bool and 'message' string.
-        """
-        config = get_config()
-        if not config.llm.api_key:
-            return {"success": False, "message": "API key is not configured"}
-
-        try:
-            import httpx
-
-            response = httpx.get(
-                f"{config.llm.base_url}/models",
-                headers={"Authorization": f"Bearer {config.llm.api_key}"},
-                timeout=10,
-            )
-            if response.status_code == 200:
-                return {"success": True, "message": "Connection successful"}
-            return {
-                "success": False,
-                "message": f"API returned {response.status_code}",
-            }
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-
-    def _mask_key(self, key: str) -> str:
-        """Mask API key for display."""
-        if not key or len(key) < 8:
-            return "••••••••"
-        return key[:4] + "••••" + key[-4:]
-
-    def _update_env_file(self, env_vars: dict[str, str]) -> None:
-        """Update .env file, preserving existing entries.
-
-        Handles quoted values (KEY="value" or KEY='value') correctly.
-        Preserves comments and blank lines.
-        """
-        lines: list[str] = []
-        existing_keys: set[str] = set()
-
-        if self._env_file.exists():
-            for line in self._env_file.read_text(encoding="utf-8").splitlines():
-                stripped = line.strip()
-                if stripped and not stripped.startswith("#") and "=" in stripped:
-                    key = stripped.split("=", 1)[0].strip()
-                    if key in env_vars:
-                        lines.append(f"{key}={env_vars[key]}")
-                        existing_keys.add(key)
-                        continue
-                lines.append(line)
-
-        # Add new keys
-        for key, value in env_vars.items():
-            if key not in existing_keys:
-                lines.append(f"{key}={value}")
-
-        self._env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    @staticmethod
-    def _strip_quotes(value: str) -> str:
-        """Strip surrounding quotes from .env values."""
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
-            return value[1:-1]
-        return value
-```
+> [!NOTE]
+> **Implemented with major improvements beyond original plan:**
+> - **Auto-generated from `SECTIONS` registry** — `get_settings()`, `_get_defaults()`, and prefix map are all derived from `config.py` model metadata. No manual field listing.
+> - **9 sections** (not 5): added `calibre`, `crawler_llm`, `glossary_llm`, `translator_llm`
+> - **Smart defaults:** values matching Pydantic defaults are commented out in `.env`, not written
+> - **`.env` backup rotation:** up to 5 backups (`.env.bak.1` → `.env.bak.5`) before each save
+> - **Field descriptions:** `_descriptions` key in API response, auto-extracted from `Field(description=...)`
+> - **Test isolation:** `create_app()` accepts `env_file` parameter for isolated test `.env` files
+> - **Metadata key skipping:** `update_settings()` skips `_descriptions` and unknown sections
+>
+> See actual implementation: [config_service.py](file:///d:/latuan/Programming/dich-truyen-tien-hiep/src/dich_truyen/services/config_service.py)
 
 **Step 4: Add python-multipart dependency**
 
@@ -543,7 +383,7 @@ git commit -m "feat(api): add settings API and python-multipart dependency"
 
 ---
 
-## Task 2: Glossary API Endpoints
+## Task 2: Glossary API Endpoints ✅ DONE
 
 **Files:**
 - Create: `src/dich_truyen/api/routes/glossary.py`
@@ -873,7 +713,7 @@ git commit -m "feat(api): add glossary CRUD endpoints"
 
 ---
 
-## Task 3: Settings Frontend Page
+## Task 3: Settings Frontend Page ✅ DONE
 
 **Files:**
 - Create: `web/src/app/settings/page.tsx`
@@ -884,48 +724,9 @@ git commit -m "feat(api): add glossary CRUD endpoints"
 
 **Step 1: Add TypeScript types**
 
-Add to `web/src/lib/types.ts`:
-
-```typescript
-/** Application settings. */
-export interface AppSettings {
-  llm: {
-    api_key: string;
-    base_url: string;
-    model: string;
-    max_tokens: number;
-    temperature: number;
-  };
-  crawler: {
-    delay_ms: number;
-    max_retries: number;
-    timeout_seconds: number;
-  };
-  translation: {
-    chunk_size: number;
-    chunk_overlap: number;
-    enable_polish_pass: boolean;
-    progressive_glossary: boolean;
-    polish_temperature: number;
-  };
-  pipeline: {
-    translator_workers: number;
-    queue_size: number;
-    crawl_delay_ms: number;
-  };
-  export: {
-    parallel_workers: number;
-    volume_size: number;
-    fast_mode: boolean;
-  };
-}
-
-/** Test connection result. */
-export interface TestConnectionResult {
-  success: boolean;
-  message: string;
-}
-```
+> [!NOTE]
+> **Actual `AppSettings` has 9 sections** (not 5): llm, crawler, translation, pipeline, export, calibre, crawler_llm, glossary_llm, translator_llm, plus `_descriptions: FieldDescriptions` and `TaskLLMConfig` type.
+> See actual types: [types.ts](file:///d:/latuan/Programming/dich-truyen-tien-hiep/web/src/lib/types.ts)
 
 **Step 2: Add API functions**
 
@@ -959,16 +760,14 @@ Create a global Toast context (`ToastProvider.tsx`) and wrap `layout.tsx` with i
 
 **Step 4: Create Settings page**
 
-Create `web/src/app/settings/page.tsx` — a form page with sections for each config group (API, Crawler, Translation, Pipeline, Export). Uses the design specs from the wireframe above. Key behaviors:
-
-- Loads settings on mount via `getSettings()`
-- Save button calls `updateSettings()` with changed values
-- Test Connection button calls `testConnection()` and shows inline result
-- Reset button reloads from server
-- Success/error feedback via the global Toast system
-- Password toggle for API key field
-
-> **Note:** Full component code will be written during execution. The page follows the same patterns as existing pages (e.g., `/new/page.tsx` for form inputs, card-based sections).
+> [!NOTE]
+> **Actual implementation exceeds plan:**
+> - **Basic + Advanced tabs** — not just a single form
+> - **9 sections** with all config fields exposed
+> - **3 Task LLM Override sections** (collapsible cards for crawler/glossary/translator LLM)
+> - **Field description hints** — Pydantic `Field(description=...)` shown as helper text below inputs
+> - **Vanilla CSS with design tokens** (not Tailwind)
+> See actual page: [settings/page.tsx](file:///d:/latuan/Programming/dich-truyen-tien-hiep/web/src/app/settings/page.tsx)
 
 **Step 5: Verify in browser**
 
@@ -991,7 +790,7 @@ git commit -m "feat(web): add global Toast system and Settings page"
 
 ---
 
-## Task 4: Glossary Editor Frontend
+## Task 4: Glossary Editor Frontend ✅ DONE
 
 **Files:**
 - Create: `web/src/app/books/[id]/glossary/page.tsx`
@@ -1105,7 +904,15 @@ git commit -m "feat(web): add Glossary Editor page"
 
 ---
 
-## Task 5: Enhanced Side-by-Side Reader
+## Task 5: Enhanced Side-by-Side Reader ✅ DONE
+
+> [!NOTE]
+> **Already implemented** — the ReaderView component was found to have all 4 features:
+> - Paragraph alignment (`splitParagraphs` + grid rendering)
+> - Synced scrolling (proportional `scrollTop` sync)
+> - Chapter dropdown (`<select>` in toolbar)
+> - Reading progress (localStorage `dich-truyen-last-read-{bookId}`)
+> - Added: "Continue Reading" button on Book Detail page
 
 **Files:**
 - Modify: `web/src/components/reader/ReaderView.tsx`
@@ -1143,7 +950,15 @@ git commit -m "feat(web): enhanced reader with paragraph alignment and reading p
 
 ---
 
-## Task 6: Extract Remaining Services
+## Task 6: Extract Remaining Services ✅ DONE
+
+> [!NOTE]
+> **All services created:**
+> - ✅ `GlossaryService` — `services/glossary_service.py`
+> - ✅ `ExportService` — `services/export_service.py`
+> - ✅ `StyleService` — `services/style_service.py`
+> - ✅ `BookService` — `services/book_service.py`
+> - ✅ Tests: `tests/test_services.py` (7 tests passing)
 
 **Files:**
 - Create: `src/dich_truyen/services/glossary_service.py`
