@@ -14,7 +14,10 @@ from dich_truyen.services.events import EventBus
 from dich_truyen.services.pipeline_service import PipelineService
 
 
-def create_app(books_dir: Optional[Path] = None) -> FastAPI:
+def create_app(
+    books_dir: Optional[Path] = None,
+    env_file: Optional[Path] = None,
+) -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="Dịch Truyện API",
@@ -44,7 +47,7 @@ def create_app(books_dir: Optional[Path] = None) -> FastAPI:
     app.include_router(pipeline.router)
 
     # Settings service
-    config_service = ConfigService()
+    config_service = ConfigService(env_file=env_file)
     settings.set_config_service(config_service)
     app.include_router(settings.router)
 

@@ -106,6 +106,9 @@ class ConfigService:
     def update_settings(self, updates: dict[str, Any]) -> dict[str, Any]:
         """Update configuration from a partial dict.
 
+        Only values that differ from Pydantic defaults are written to .env.
+        Values matching defaults are commented out (prefixed with #) for reference.
+
         Args:
             updates: Nested dict matching get_settings() structure.
                      Only provided keys are updated.
@@ -113,7 +116,7 @@ class ConfigService:
         Returns:
             Updated full settings dict.
         """
-        env_vars: dict[str, str] = {}
+        defaults = self._get_defaults()
 
         # Map nested dict keys to env var names
         section_prefix_map = {
@@ -128,26 +131,97 @@ class ConfigService:
             "translator_llm": "TRANSLATOR_LLM_",
         }
 
+        write_vars: dict[str, str] = {}  # Non-default values to write
+        comment_vars: set[str] = set()   # Default values to comment out
+
         for section, values in updates.items():
             if not isinstance(values, dict):
                 continue
             prefix = section_prefix_map.get(section, "")
+            section_defaults = defaults.get(section, {})
+
             for key, value in values.items():
                 # Skip masked API keys (user didn't change them)
                 if key == "api_key" and isinstance(value, str) and "••" in value:
                     continue
                 env_name = f"{prefix}{key.upper()}"
-                env_vars[env_name] = str(value)
+                default_value = section_defaults.get(key)
+
+                # Compare value against default
+                if self._is_default(value, default_value):
+                    comment_vars.add(env_name)
+                else:
+                    write_vars[env_name] = str(value)
 
         # Write to .env file
-        self._update_env_file(env_vars)
+        self._update_env_file(write_vars, comment_vars)
 
-        # Update environment and reload config
-        for name, value in env_vars.items():
+        # Update environment: set non-default vars, remove defaults
+        for name, value in write_vars.items():
             os.environ[name] = value
+        for name in comment_vars:
+            os.environ.pop(name, None)
         set_config(AppConfig.load(self._env_file))
 
         return self.get_settings()
+
+    def _get_defaults(self) -> dict[str, dict[str, Any]]:
+        """Build a map of all Pydantic Field default values.
+
+        Uses model_fields metadata to get the true defaults defined in
+        Field(..., default=X), NOT from environment variables.
+        """
+        from pydantic.fields import FieldInfo
+
+        from dich_truyen.config import (
+            CalibreConfig,
+            CrawlerConfig,
+            CrawlerLLMConfig,
+            ExportConfig,
+            GlossaryLLMConfig,
+            LLMConfig,
+            PipelineConfig,
+            TranslationConfig,
+            TranslatorLLMConfig,
+        )
+
+        def _field_defaults(model_cls: type) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for name, field_info in model_cls.model_fields.items():
+                if isinstance(field_info, FieldInfo) and field_info.default is not None:
+                    result[name] = field_info.default
+            return result
+
+        return {
+            "llm": _field_defaults(LLMConfig),
+            "crawler": _field_defaults(CrawlerConfig),
+            "translation": _field_defaults(TranslationConfig),
+            "pipeline": _field_defaults(PipelineConfig),
+            "export": _field_defaults(ExportConfig),
+            "calibre": _field_defaults(CalibreConfig),
+            "crawler_llm": _field_defaults(CrawlerLLMConfig),
+            "glossary_llm": _field_defaults(GlossaryLLMConfig),
+            "translator_llm": _field_defaults(TranslatorLLMConfig),
+        }
+
+    @staticmethod
+    def _is_default(value: Any, default: Any) -> bool:
+        """Check if a value matches its default."""
+        if default is None:
+            return False  # Unknown default, always save
+        # Handle boolean comparison (frontend may send string "true"/"false")
+        if isinstance(default, bool):
+            if isinstance(value, bool):
+                return value == default
+            return str(value).lower() == str(default).lower()
+        # Handle numeric comparison (avoid str(0) != str(0.0) mismatch)
+        if isinstance(default, (int, float)):
+            try:
+                return float(value) == float(default)
+            except (ValueError, TypeError):
+                pass
+        # Fallback: string comparison
+        return str(value) == str(default)
 
     def test_connection(self) -> dict[str, Any]:
         """Test LLM API connection.
@@ -194,32 +268,81 @@ class ConfigService:
             return "••••••••"
         return key[:4] + "••••" + key[-4:]
 
-    def _update_env_file(self, env_vars: dict[str, str]) -> None:
+    def _update_env_file(
+        self, write_vars: dict[str, str], comment_vars: set[str] | None = None
+    ) -> None:
         """Update .env file, preserving existing entries.
 
-        Handles quoted values (KEY="value" or KEY='value') correctly.
-        Preserves comments and blank lines.
+        - write_vars: keys to set with new values
+        - comment_vars: keys to comment out (value matches default)
+        Handles commented-out lines: if a key was previously commented,
+        it gets uncommented when set to a non-default value.
         """
+        # Backup before modifying
+        self._backup_env_file()
+
+        comment_vars = comment_vars or set()
         lines: list[str] = []
-        existing_keys: set[str] = set()
+        handled_keys: set[str] = set()
 
         if self._env_file.exists():
             for line in self._env_file.read_text(encoding="utf-8").splitlines():
                 stripped = line.strip()
+
+                # Check active (uncommented) KEY=value lines
                 if stripped and not stripped.startswith("#") and "=" in stripped:
                     key = stripped.split("=", 1)[0].strip()
-                    if key in env_vars:
-                        lines.append(f"{key}={env_vars[key]}")
-                        existing_keys.add(key)
+                    if key in write_vars:
+                        lines.append(f"{key}={write_vars[key]}")
+                        handled_keys.add(key)
                         continue
+                    if key in comment_vars:
+                        # Comment out: value matches default
+                        lines.append(f"# {stripped}")
+                        handled_keys.add(key)
+                        continue
+
+                # Check commented-out lines: # KEY=value
+                if stripped.startswith("#") and "=" in stripped:
+                    uncommented = stripped.lstrip("#").strip()
+                    key = uncommented.split("=", 1)[0].strip()
+                    if key in write_vars:
+                        # Uncomment and set new value
+                        lines.append(f"{key}={write_vars[key]}")
+                        handled_keys.add(key)
+                        continue
+
                 lines.append(line)
 
-        # Add new keys
-        for key, value in env_vars.items():
-            if key not in existing_keys:
+        # Add new keys that weren't in the file at all
+        for key, value in write_vars.items():
+            if key not in handled_keys:
                 lines.append(f"{key}={value}")
 
         self._env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    _MAX_BACKUPS = 5
+
+    def _backup_env_file(self) -> None:
+        """Create a rotating backup of .env before modifying it.
+
+        Keeps up to _MAX_BACKUPS copies: .env.bak.1 (newest) to .env.bak.5 (oldest).
+        """
+        import shutil
+
+        if not self._env_file.exists():
+            return
+
+        # Rotate existing backups: .bak.4 → .bak.5, .bak.3 → .bak.4, ...
+        for i in range(self._MAX_BACKUPS, 1, -1):
+            older = self._env_file.parent / f"{self._env_file.name}.bak.{i}"
+            newer = self._env_file.parent / f"{self._env_file.name}.bak.{i - 1}"
+            if newer.exists():
+                shutil.copy2(str(newer), str(older))
+
+        # Copy current .env → .env.bak.1
+        bak_1 = self._env_file.parent / f"{self._env_file.name}.bak.1"
+        shutil.copy2(str(self._env_file), str(bak_1))
 
     @staticmethod
     def _strip_quotes(value: str) -> str:
