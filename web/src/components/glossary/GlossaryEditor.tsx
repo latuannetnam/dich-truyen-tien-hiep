@@ -11,6 +11,7 @@ import {
   Check,
   X,
   Loader2,
+  BookOpen,
 } from "lucide-react";
 import type { GlossaryEntryType, GlossaryResponseType } from "@/lib/types";
 import {
@@ -21,6 +22,7 @@ import {
   getGlossaryExportUrl,
 } from "@/lib/api";
 import { useToast } from "@/components/ui/ToastProvider";
+import EmptyState from "@/components/ui/EmptyState";
 
 const CATEGORY_COLORS: Record<string, string> = {
   character: "bg-teal-500/15 text-teal-400",
@@ -480,13 +482,18 @@ export default function GlossaryEditor({ bookId, data, onRefresh }: Props) {
 
             {filteredEntries.length === 0 && !addingNew && (
               <tr>
-                <td
-                  colSpan={5}
-                  className="px-4 py-12 text-center text-[var(--text-muted)] text-sm"
-                >
-                  {search || categoryFilter !== "all"
-                    ? "No entries match your filters"
-                    : "No glossary entries yet. Click \"+ Add\" to create one."}
+                <td colSpan={5}>
+                  {search || categoryFilter !== "all" ? (
+                    <p className="px-4 py-12 text-center text-[var(--text-muted)] text-sm">
+                      No entries match your filters
+                    </p>
+                  ) : (
+                    <EmptyState
+                      icon={BookOpen}
+                      title="No glossary entries"
+                      description='Click "+ Add" to create your first entry, or import from a CSV file.'
+                    />
+                  )}
                 </td>
               </tr>
             )}

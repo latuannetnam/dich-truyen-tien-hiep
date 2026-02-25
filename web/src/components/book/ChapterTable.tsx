@@ -6,8 +6,10 @@ import {
   Download,
   Clock,
   AlertCircle,
+  BookOpen,
 } from "lucide-react";
 import type { ChapterDetail } from "@/lib/types";
+import EmptyState from "@/components/ui/EmptyState";
 
 interface ChapterTableProps {
   bookId: string;
@@ -52,6 +54,17 @@ const statusConfig: Record<
 
 export default function ChapterTable({ bookId, chapters }: ChapterTableProps) {
   const router = useRouter();
+
+  if (chapters.length === 0) {
+    return (
+      <EmptyState
+        icon={BookOpen}
+        title="No chapters yet"
+        description="Start a pipeline to crawl and translate chapters for this book."
+        action={{ label: "Start Translation", href: "/new" }}
+      />
+    );
+  }
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl overflow-hidden">
