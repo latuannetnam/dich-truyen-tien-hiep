@@ -15,8 +15,12 @@ AppConfig(BaseSettings)
 ├── llm: LLMConfig           # OPENAI_* vars
 ├── crawler: CrawlerConfig   # CRAWLER_* vars
 ├── translation: TranslationConfig  # TRANSLATION_* vars
+├── pipeline: PipelineConfig  # PIPELINE_* vars
 ├── calibre: CalibreConfig   # CALIBRE_* vars
-└── export: ExportConfig     # EXPORT_* vars
+├── export: ExportConfig     # EXPORT_* vars
+├── crawler_llm: CrawlerLLMConfig     # Task-specific LLM overrides
+├── glossary_llm: GlossaryLLMConfig   # Task-specific LLM overrides
+└── translator_llm: TranslatorLLMConfig # Task-specific LLM overrides
 ```
 
 ## Environment Variables Reference
@@ -54,6 +58,7 @@ AppConfig(BaseSettings)
 |----------|---------|---------|
 | `PIPELINE_WORKERS` | 3 | Number of translator worker processes |
 | `PIPELINE_QUEUE_SIZE` | 0 | Queue max size (0 = unbounded) |
+| `PIPELINE_CRAWL_DELAY_MS` | 500 | Crawl delay within pipeline (ms) |
 
 ### Export / Calibre
 
@@ -72,4 +77,15 @@ from dich_truyen.config import get_config
 config = get_config()
 model = config.llm.model
 delay = config.crawler.delay
+```
+
+### ConfigService (API settings management)
+
+```python
+from dich_truyen.services.config_service import ConfigService
+
+svc = ConfigService()           # Uses .env in CWD
+settings = svc.get_settings()   # Returns dict with masked API keys
+svc.update_settings({"llm": {"model": "gpt-4o"}})  # Writes to .env + reloads
+result = svc.test_connection()  # Returns {"success": bool, "message": str}
 ```

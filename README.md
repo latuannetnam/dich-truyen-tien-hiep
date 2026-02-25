@@ -2,7 +2,7 @@
 
 > **Ngôn ngữ:** [English](README.en.md) | [Tiếng Việt](README.md)
 
-Công cụ dòng lệnh để crawl, dịch và xuất truyện Trung Quốc sang ebook tiếng Việt.
+Công cụ dòng lệnh và giao diện web để crawl, dịch và xuất truyện Trung Quốc sang ebook tiếng Việt.
 
 ## Tính Năng
 
@@ -15,7 +15,7 @@ Công cụ dòng lệnh để crawl, dịch và xuất truyện Trung Quốc san
 - 📕 **Xuất Ebook**: Chuyển đổi sang EPUB, AZW3, MOBI, PDF qua Calibre
 - 🔄 **Hoạt Động Tiếp Tục Được**: Tiếp tục download/dịch khi bị gián đoạn
 - ⚡ **Pipeline Streaming**: Crawl và dịch đồng thời với đa worker
-- 🖥️ **Giao Diện Web**: Duyệt thư viện sách, đọc chương, bắt đầu dịch và theo dõi tiến trình real-time trên trình duyệt
+- 🖥️ **[Giao Diện Web](web/README.md)**: Duyệt thư viện, đọc song ngữ, quản lý glossary, cấu hình settings, và theo dõi tiến trình real-time
 
 ### Kỹ Thuật Nâng Cao
 
@@ -138,14 +138,7 @@ uv run dich-truyen ui --port 9000 --host 0.0.0.0
 uv run dich-truyen ui --no-browser
 ```
 
-> **Chế độ phát triển:** Chạy API server và Next.js dev server riêng:
-> ```bash
-> # Terminal 1: API server
-> uv run dich-truyen ui --no-browser --port 8000
-> # Terminal 2: Frontend
-> cd web && npm run dev
-> # Mở http://localhost:3000
-> ```
+> Xem [hướng dẫn Web UI chi tiết](web/README.md) để biết thêm về các trang và tính năng giao diện.
 
 ### `export` - Xuất Ebook
 

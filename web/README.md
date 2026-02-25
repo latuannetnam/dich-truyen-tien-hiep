@@ -4,12 +4,80 @@ Giao diện web cho Dịch Truyện, xây dựng với Next.js, TypeScript, và 
 
 ## Tính năng
 
-- 📊 **Dashboard**: Tổng quan thống kê thư viện sách, hiển thị active jobs đang chạy
-- 📚 **Library**: Duyệt sách với card hiển thị tiến độ dịch
-- 📖 **Book Detail**: Xem chi tiết sách, trạng thái từng chương
-- 📕 **Chapter Reader**: Đọc bản dịch với chế độ song ngữ (side-by-side), điều chỉnh cỡ chữ, điều hướng bàn phím
-- 🚀 **New Translation**: Wizard 3 bước để bắt đầu dịch mới (URL → Options → Start)
-- 📡 **Pipeline Monitor**: Theo dõi tiến trình dịch real-time qua WebSocket (progress, workers, event log)
+### 📊 Dashboard
+
+Tổng quan thống kê thư viện sách, hiển thị active jobs đang chạy và sách gần đây.
+
+<!-- TODO: Add screenshot -->
+<!-- ![Dashboard](docs/screenshots/dashboard.png) -->
+
+### 📚 Library
+
+Duyệt sách với card hiển thị tiến độ dịch.
+
+<!-- TODO: Add screenshot -->
+<!-- ![Library](docs/screenshots/library.png) -->
+
+### 📖 Book Detail
+
+Xem chi tiết sách, trạng thái từng chương, liên kết đến glossary editor.
+
+<!-- TODO: Add screenshot -->
+<!-- ![Book Detail](docs/screenshots/book-detail.png) -->
+
+### 📕 Chapter Reader
+
+Đọc bản dịch với nhiều tính năng:
+- **Chế độ song ngữ**: Hiển thị bản gốc và bản dịch song song, tự động căn chỉnh theo đoạn
+- **Cuộn đồng bộ**: Khi cuộn một bên, bên kia tự động cuộn theo tỉ lệ
+- **Chọn chương nhanh**: Dropdown chuyển chương trực tiếp
+- **Lưu tiến trình đọc**: Tự động lưu chương đang đọc, tiếp tục từ nơi dừng lại
+- **Font size**: Điều chỉnh cỡ chữ, tự lưu preference
+- **Điều hướng bàn phím**: Nhấn ← → để chuyển chương
+
+<!-- TODO: Add screenshot -->
+<!-- ![Reader - Side by Side](docs/screenshots/reader-side-by-side.png) -->
+
+### ⚙️ Settings
+
+Cấu hình ứng dụng trực tiếp trên giao diện web:
+- **API Configuration**: API key, base URL, model, max tokens, temperature
+- **Crawler Settings**: Delay, timeout, retries
+- **Translation Settings**: Chunk size, overlap, polish pass, progressive glossary
+- **Pipeline Settings**: Workers, queue size, crawl delay
+- **Export Settings**: Parallel workers, volume size, fast mode
+- **Test Connection**: Kiểm tra kết nối API ngay trên giao diện
+
+<!-- TODO: Add screenshot -->
+<!-- ![Settings](docs/screenshots/settings.png) -->
+
+### 📝 Glossary Editor
+
+Quản lý glossary trực tiếp trên giao diện, mỗi sách có glossary riêng:
+- **Inline editing**: Sửa trực tiếp trên bảng, thêm/xóa entry
+- **Tìm kiếm & lọc**: Tìm theo tiếng Trung/Việt, lọc theo category
+- **Category badges**: Nhân vật, cảnh giới, kỹ thuật, địa điểm, vật phẩm, tổ chức
+- **Import/Export CSV**: Import glossary từ file CSV hoặc export ra CSV
+
+<!-- TODO: Add screenshot -->
+<!-- ![Glossary Editor](docs/screenshots/glossary-editor.png) -->
+
+### 🚀 New Translation
+
+Wizard 3 bước để bắt đầu dịch mới (URL → Options → Start).
+
+<!-- TODO: Add screenshot -->
+<!-- ![New Translation Wizard](docs/screenshots/new-translation.png) -->
+
+### 📡 Pipeline Monitor
+
+Theo dõi tiến trình dịch real-time qua WebSocket:
+- **Progress panel**: Thanh tiến trình tổng thể
+- **Worker cards**: Trạng thái từng worker
+- **Event log**: Nhật ký sự kiện chi tiết
+
+<!-- TODO: Add screenshot -->
+<!-- ![Pipeline Monitor](docs/screenshots/pipeline-monitor.png) -->
 
 ## Bắt đầu
 
@@ -58,8 +126,10 @@ src/
 │   ├── library/page.tsx    # Book library
 │   ├── books/[id]/
 │   │   ├── page.tsx        # Book detail
-│   │   └── read/page.tsx   # Chapter reader
+│   │   ├── read/page.tsx   # Chapter reader
+│   │   └── glossary/page.tsx # Glossary editor
 │   ├── new/page.tsx        # New Translation wizard (3-step)
+│   ├── settings/page.tsx   # Application settings
 │   ├── pipeline/
 │   │   └── [jobId]/page.tsx # Pipeline monitor (real-time WebSocket)
 │   ├── layout.tsx          # Root layout
@@ -68,14 +138,16 @@ src/
 │   ├── layout/             # Sidebar, LayoutWrapper
 │   ├── library/            # BookCard, BookCardSkeleton
 │   ├── book/               # ChapterTable
-│   ├── reader/             # ReaderView
+│   ├── reader/             # ReaderView (paragraph-aligned side-by-side)
+│   ├── glossary/           # GlossaryEditor (inline CRUD, search, CSV import/export)
 │   ├── dashboard/          # StatCard, ActiveJobs
 │   ├── pipeline/           # ProgressPanel, WorkerCards, EventLog
-│   └── wizard/             # WizardSteps
+│   ├── wizard/             # WizardSteps
+│   └── ui/                 # ToastProvider (global toast notifications)
 ├── hooks/
 │   └── useWebSocket.ts     # Pipeline WebSocket hook
 └── lib/
-    ├── api.ts              # API client (books + pipeline)
+    ├── api.ts              # API client (books, pipeline, settings, glossary)
     └── types.ts            # TypeScript interfaces
 ```
 
@@ -91,12 +163,20 @@ Requests đến `/api/*` được proxy sang `http://127.0.0.1:8000/api/*` qua c
 | GET | `/api/v1/books/:id` | Book detail |
 | GET | `/api/v1/books/:id/chapters/:num/raw` | Raw chapter |
 | GET | `/api/v1/books/:id/chapters/:num/translated` | Translated chapter |
+| GET | `/api/v1/books/:id/glossary` | Get glossary entries |
+| POST | `/api/v1/books/:id/glossary` | Add glossary entry |
+| PUT | `/api/v1/books/:id/glossary/:term` | Update glossary entry |
+| DELETE | `/api/v1/books/:id/glossary/:term` | Delete glossary entry |
+| GET | `/api/v1/books/:id/glossary/export` | Export glossary CSV |
+| POST | `/api/v1/books/:id/glossary/import` | Import glossary CSV |
 | POST | `/api/v1/pipeline/start` | Start pipeline job |
 | GET | `/api/v1/pipeline/jobs` | List all jobs |
 | GET | `/api/v1/pipeline/jobs/:id` | Get job status |
 | POST | `/api/v1/pipeline/jobs/:id/cancel` | Cancel job |
+| GET | `/api/v1/settings` | Get app settings |
+| PUT | `/api/v1/settings` | Update app settings |
+| POST | `/api/v1/settings/test-connection` | Test API connection |
 
 ### WebSocket
 
 `ws://localhost:8000/ws/pipeline/{jobId}` — Real-time pipeline events (progress, chapter status, worker updates).
-

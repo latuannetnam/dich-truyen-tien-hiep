@@ -2,7 +2,7 @@
 
 > **Language:** [English](README.en.md) | [Tiếng Việt](README.md)
 
-A command-line tool for crawling, translating, and exporting Chinese novels to Vietnamese ebooks.
+A command-line tool and web interface for crawling, translating, and exporting Chinese novels to Vietnamese ebooks.
 
 ## Features
 
@@ -15,7 +15,7 @@ A command-line tool for crawling, translating, and exporting Chinese novels to V
 - 📕 **Ebook Export**: Convert to EPUB, AZW3, MOBI, PDF via Calibre
 - 🔄 **Resumable Operations**: Continue interrupted downloads/translations
 - ⚡ **Streaming Pipeline**: Concurrent crawl and translate with multiple workers
-- 🖥️ **Web UI**: Browse your book library, read chapters, start translations, and monitor progress in real-time
+- 🖥️ **[Web UI](web/README.md)**: Browse library, read side-by-side, manage glossaries, configure settings, and monitor progress in real-time
 
 ### Advanced Techniques
 
@@ -138,14 +138,7 @@ uv run dich-truyen ui --port 9000 --host 0.0.0.0
 uv run dich-truyen ui --no-browser
 ```
 
-> **Development mode:** Run the API server and Next.js dev server separately:
-> ```bash
-> # Terminal 1: API server
-> uv run dich-truyen ui --no-browser --port 8000
-> # Terminal 2: Frontend
-> cd web && npm run dev
-> # Open http://localhost:3000
-> ```
+> See the [detailed Web UI documentation](web/README.md) for pages and feature descriptions.
 
 ### `export` - Export to Ebook
 
