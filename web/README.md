@@ -20,7 +20,7 @@ Duyệt sách với card hiển thị tiến độ dịch.
 
 ### 📖 Book Detail
 
-Xem chi tiết sách, trạng thái từng chương, liên kết đến glossary editor.
+Xem chi tiết sách, trạng thái từng chương, điều khiển export, liên kết đến glossary editor.
 
 <!-- TODO: Add screenshot -->
 <!-- ![Book Detail](docs/screenshots/book-detail.png) -->
@@ -61,6 +61,31 @@ Quản lý glossary trực tiếp trên giao diện, mỗi sách có glossary ri
 
 <!-- TODO: Add screenshot -->
 <!-- ![Glossary Editor](docs/screenshots/glossary-editor.png) -->
+
+### 🎨 Style Manager
+
+Duyệt và xem chi tiết các style template:
+- **Card grid**: Hiển thị tên, mô tả, tone badge, built-in indicator
+- **Detail panel**: Slide-in panel hiển thị guidelines, vocabulary, examples
+- **Search/filter**: Tìm kiếm theo tên style
+
+<!-- TODO: Add screenshot -->
+<!-- ![Style Manager](docs/screenshots/style-manager.png) -->
+
+### 📦 Export Controls
+
+Điều khiển export trực tiếp từ Book Detail:
+- **Format selector**: epub, azw3, mobi, pdf
+- **Export button**: Bắt đầu export với loading spinner
+- **Download links**: Tải file đã export
+- **Toast feedback**: Thông báo thành công/lỗi
+
+### ✨ Animations & Error Handling
+
+- **CSS animations**: fadeIn, slideInRight, slideInUp, pulse, spin với staggered children
+- **`prefers-reduced-motion`**: Tự động tắt animation cho người dùng nhạy cảm
+- **ErrorBoundary**: Bắt lỗi global với nút retry
+- **EmptyState**: Component tái sử dụng cho trạng thái trống (chapters, glossary)
 
 ### 🚀 New Translation
 
@@ -131,9 +156,11 @@ src/
 │   ├── new/page.tsx        # New Translation wizard (3-step)
 │   ├── settings/page.tsx   # Application settings
 │   ├── pipeline/
+│   │   ├── page.tsx       # Pipeline job list
 │   │   └── [jobId]/page.tsx # Pipeline monitor (real-time WebSocket)
+│   ├── styles/page.tsx    # Style Manager
 │   ├── layout.tsx          # Root layout
-│   └── globals.css         # Design system tokens
+│   └── globals.css         # Design system tokens + animations
 ├── components/
 │   ├── layout/             # Sidebar, LayoutWrapper
 │   ├── library/            # BookCard, BookCardSkeleton
@@ -143,11 +170,11 @@ src/
 │   ├── dashboard/          # StatCard, ActiveJobs
 │   ├── pipeline/           # ProgressPanel, WorkerCards, EventLog
 │   ├── wizard/             # WizardSteps
-│   └── ui/                 # ToastProvider (global toast notifications)
+│   └── ui/                 # ToastProvider, ErrorBoundary, EmptyState
 ├── hooks/
 │   └── useWebSocket.ts     # Pipeline WebSocket hook
 └── lib/
-    ├── api.ts              # API client (books, pipeline, settings, glossary)
+    ├── api.ts              # API client (books, pipeline, settings, glossary, styles, export)
     └── types.ts            # TypeScript interfaces
 ```
 
@@ -176,6 +203,12 @@ Requests đến `/api/*` được proxy sang `http://127.0.0.1:8000/api/*` qua c
 | GET | `/api/v1/settings` | Get app settings |
 | PUT | `/api/v1/settings` | Update app settings |
 | POST | `/api/v1/settings/test-connection` | Test API connection |
+| GET | `/api/v1/styles` | List styles |
+| GET | `/api/v1/styles/:name` | Get style detail |
+| GET | `/api/v1/export/formats` | Supported export formats |
+| GET | `/api/v1/books/:id/export` | Export status |
+| POST | `/api/v1/books/:id/export` | Start export |
+| GET | `/api/v1/books/:id/export/download/:file` | Download export |
 
 ### WebSocket
 

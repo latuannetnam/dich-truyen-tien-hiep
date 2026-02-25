@@ -13,13 +13,18 @@ description: CLI commands, options, and how to add new commands
 ```
 dich-truyen
 ├── pipeline           Main workflow: crawl + translate + (export)
-│   ├── URL            Source novel URL (required)
+│   ├── --url          Source novel URL (required for new books)
+│   ├── --book-dir     Existing book directory
+│   ├── --chapters     Chapter range (e.g., "1-100")
+│   ├── --style        Translation style template (default: tien_hiep)
+│   ├── --workers N    Number of translator workers (default: 3)
 │   ├── --crawl-only   Only crawl, skip translation
 │   ├── --translate-only  Only translate already-crawled chapters
 │   ├── --skip-export  Don't export after translation
+│   ├── --no-glossary  Disable auto-glossary generation
+│   ├── --glossary CSV Import glossary from CSV before translation
 │   ├── --force        Re-process already completed chapters
-│   ├── --start N      Start from chapter N
-│   └── --end N        Stop at chapter N
+│   └── --format       epub | azw3 | mobi | pdf
 │
 ├── export             Standalone ebook export
 │   ├── BOOK_DIR       Path to book directory

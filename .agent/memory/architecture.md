@@ -38,6 +38,27 @@ description: Pipeline overview, component map, data flow, and key design decisio
 
 **Conditional export**: Only triggers when `result.all_done and not result.cancelled`.
 
+## Pipeline Modes
+
+`StreamingPipeline.run()` supports three mutually exclusive modes via `crawl_only` and `translate_only` flags:
+
+| Mode | `to_crawl` | `to_translate` | Behavior |
+|------|-----------|----------------|----------|
+| **Default** | `PENDING` chapters | `CRAWLED` chapters | Full pipeline: crawl → translate |
+| **`crawl_only=True`** | `PENDING` chapters | (skipped) | Early return after crawl, no translation |
+| **`translate_only=True`** | `[]` (always empty) | `CRAWLED` chapters | No crawl, only translate existing raw files |
+
+The API route (`api/routes/pipeline.py`) rejects `crawl_only + translate_only` with HTTP 422. The wizard UI enforces mutual exclusivity on the checkboxes.
+
+**`force` flag interaction:**
+
+| Mode | Force resets to | Effect |
+|------|----------------|--------|
+| `translate_only` | `CRAWLED` | Re-translate all chapters with raw files |
+| `crawl_only` | `PENDING` | Re-crawl all chapters |
+| Default + URL | `PENDING` | Re-crawl + re-translate |
+| Default + no URL | `CRAWLED` | Re-translate only |
+
 ## Key Files Map
 
 | Phase | File | Purpose |
@@ -68,11 +89,13 @@ description: Pipeline overview, component map, data flow, and key design decisio
 | | `api/routes/pipeline.py` | Pipeline start, list, get, cancel endpoints |
 | | `api/routes/settings.py` | Settings GET/PUT, test-connection endpoint |
 | | `api/routes/glossary.py` | Per-book glossary CRUD, CSV import/export |
-| | `api/websocket.py` | WebSocket `/ws/pipeline/{job_id}` for real-time events |
+| | `api/routes/styles.py` | Style list and detail endpoints |
+| | `api/routes/export.py` | Export formats, status, start, download |
+| | `api/websocket.py` | WebSocket `/ws/pipeline/{job_id}` for real-time events (graceful disconnect handling) |
 | **Web UI** | `web/src/app/` | Next.js App Router pages (dashboard, library, book, reader, new, pipeline, settings, glossary) |
 | | `web/src/components/` | React components (Sidebar, BookCard, ChapterTable, ReaderView, ProgressPanel, WorkerCards, EventLog, WizardSteps, ActiveJobs, GlossaryEditor, ToastProvider) |
 | | `web/src/hooks/useWebSocket.ts` | React hook for pipeline WebSocket events |
-| | `web/src/lib/api.ts` | Frontend API client (books, pipeline, settings, glossary) |
+| | `web/src/lib/api.ts` | Frontend API client (books, pipeline, settings, glossary, styles, export) |
 | | `web/src/lib/types.ts` | TypeScript interfaces matching Pydantic models |
 
 ## Common Modification Points
@@ -95,6 +118,8 @@ description: Pipeline overview, component map, data flow, and key design decisio
 | Export service | `services/export_service.py` — format list, status, run export |
 | Style service | `services/style_service.py` — list/load style templates |
 | Book service | `services/book_service.py` — list/get books, chapter content |
+| Style API endpoints | `api/routes/styles.py` with `@router.get()` |
+| Export API endpoints | `api/routes/export.py` with `@router.get()` / `@router.post()` |
 | Web UI pages | `web/src/app/*/page.tsx` |
 | API proxy config | `web/next.config.ts` rewrites `/api/*` → `:8000` |
 
