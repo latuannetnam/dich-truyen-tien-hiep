@@ -179,3 +179,22 @@ export interface GlossaryResponseType {
   total: number;
   categories: string[];
 }
+
+/** Style template summary. */
+export interface StyleSummary {
+  name: string;
+  description: string;
+  tone: string;
+  is_builtin: boolean;
+}
+
+/** Full style template. */
+export interface StyleDetail {
+  name: string;
+  description: string;
+  guidelines: string[];
+  vocabulary: Record<string, string>;
+  tone: string;
+  examples: { chinese: string; vietnamese: string }[];
+}
+

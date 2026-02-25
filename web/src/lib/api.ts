@@ -8,6 +8,8 @@ import type {
   TestConnectionResult,
   GlossaryResponseType,
   GlossaryEntryType,
+  StyleSummary,
+  StyleDetail,
 } from "./types";
 
 const API_BASE = "/api/v1";
@@ -155,4 +157,14 @@ export async function importGlossaryCsv(bookId: string, file: File): Promise<{im
 // For export, use the raw URL: `${API_BASE}/books/${bookId}/glossary/export`
 export function getGlossaryExportUrl(bookId: string): string {
   return `${API_BASE}/books/${bookId}/glossary/export`;
+}
+
+// --- Styles API ---
+
+export async function getStyles(): Promise<StyleSummary[]> {
+  return fetchJson<StyleSummary[]>(`${API_BASE}/styles`);
+}
+
+export async function getStyle(name: string): Promise<StyleDetail> {
+  return fetchJson<StyleDetail>(`${API_BASE}/styles/${name}`);
 }
