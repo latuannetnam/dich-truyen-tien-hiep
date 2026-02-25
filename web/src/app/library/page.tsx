@@ -20,7 +20,7 @@ export default function LibraryPage() {
   }, []);
 
   return (
-    <div>
+    <div className="animate-fade-in">
       <h1 className="font-[var(--font-fira-code)] text-3xl font-bold text-[var(--text-primary)] mb-6">
         Library
       </h1>
@@ -45,7 +45,7 @@ export default function LibraryPage() {
 
       {/* Loaded state */}
       {!loading && !error && books.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 stagger-children">
           {books.map((book) => (
             <BookCard key={book.id} book={book} />
           ))}

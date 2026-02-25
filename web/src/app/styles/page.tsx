@@ -58,7 +58,7 @@ export default function StylesPage() {
   };
 
   return (
-    <div className="relative">
+    <div className="relative animate-fade-in">
       <h1 className="font-[var(--font-fira-code)] text-3xl font-bold text-[var(--text-primary)] mb-2">
         Style Manager
       </h1>

@@ -155,7 +155,7 @@ export default function BookDetailPage() {
     : [];
 
   return (
-    <div>
+    <div className="animate-fade-in">
       {/* Back link */}
       <Link
         href="/library"
@@ -213,7 +213,7 @@ export default function BookDetailPage() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 stagger-children">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (

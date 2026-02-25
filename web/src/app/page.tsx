@@ -39,7 +39,7 @@ export default function Home() {
     .slice(0, 3);
 
   return (
-    <div>
+    <div className="animate-fade-in">
       <h1 className="font-[var(--font-fira-code)] text-3xl font-bold text-[var(--text-primary)] mb-2">
         Dashboard
       </h1>
@@ -53,7 +53,7 @@ export default function Home() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 stagger-children">
           <StatCard
             label="Total Books"
             value={totalBooks}
@@ -100,7 +100,7 @@ export default function Home() {
           ))}
         </div>
       ) : recentBooks.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 stagger-children">
           {recentBooks.map((book) => (
             <BookCard key={book.id} book={book} />
           ))}
