@@ -44,6 +44,7 @@ tests/
 ├── test_events.py         # EventBus pub/sub tests
 ├── test_pipeline_service.py # PipelineService job lifecycle tests
 ├── test_glossary_service.py # GlossaryService CRUD unit tests
+├── test_services.py       # BookService + StyleService unit tests
 ├── test_crawler.py
 ├── test_translator.py
 ├── test_glossary.py

@@ -57,6 +57,9 @@ description: Pipeline overview, component map, data flow, and key design decisio
 | | `services/pipeline_service.py` | Job lifecycle management, wraps StreamingPipeline |
 | | `services/config_service.py` | Read/write `.env` settings, test LLM connection |
 | | `services/glossary_service.py` | Glossary CRUD business logic (testable without HTTP) |
+| | `services/export_service.py` | Wraps DirectEPUBAssembler + CalibreExporter |
+| | `services/style_service.py` | Wraps StyleManager for style list/load |
+| | `services/book_service.py` | Wraps BookProgress for book/chapter queries |
 | **CLI** | `cli.py` | All user-facing commands |
 | **Config** | `config.py` | Pydantic settings & env vars |
 | **Progress** | `utils/progress.py` | BookProgress & chapter status |
@@ -89,6 +92,9 @@ description: Pipeline overview, component map, data flow, and key design decisio
 | Glossary API endpoints | `api/routes/glossary.py` with CRUD routes |
 | Config read/write | `services/config_service.py` — `.env` persistence, key masking |
 | Glossary service | `services/glossary_service.py` — CRUD logic without HTTP |
+| Export service | `services/export_service.py` — format list, status, run export |
+| Style service | `services/style_service.py` — list/load style templates |
+| Book service | `services/book_service.py` — list/get books, chapter content |
 | Web UI pages | `web/src/app/*/page.tsx` |
 | API proxy config | `web/next.config.ts` rewrites `/api/*` → `:8000` |
 

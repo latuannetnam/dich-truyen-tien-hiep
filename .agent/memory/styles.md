@@ -11,6 +11,7 @@ description: Translation style templates, YAML schema, priority loading, and how
 | `translator/style.py` | Style loading & priority logic |
 | `styles/` | Custom user styles (git-tracked) |
 | Built-in styles | Embedded in the package |
+| `services/style_service.py` | Service wrapper for API routes |
 
 ## Priority Loading
 
@@ -69,4 +70,15 @@ uv run dich-truyen style list
 
 ```bash
 uv run dich-truyen pipeline "https://..." --style tien_hiep
+```
+
+## StyleService API
+
+```python
+from dich_truyen.services.style_service import StyleService
+
+svc = StyleService()
+all_styles = svc.list_styles()       # [{"name", "description", "tone", "is_builtin"}]
+detail = svc.get_style("tien_hiep")  # Full template as dict
+names = svc.get_style_names()        # ["tien_hiep", "tay_phuong"]
 ```

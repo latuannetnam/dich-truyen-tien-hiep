@@ -10,6 +10,7 @@ description: EPUB assembly, Calibre integration, output formats, and file struct
 |------|---------|
 | `exporter/epub_assembler.py` | Direct EPUB assembly with parallel writing |
 | `exporter/calibre.py` | Calibre integration for AZW3/MOBI/PDF |
+| `services/export_service.py` | Service wrapper for API routes |
 
 ## Export Flow
 
@@ -77,3 +78,14 @@ class DirectEPUBAssembler:
 | `EXPORT_VOLUME_SIZE` | 0 | Chapters per volume (0 = single file) |
 | `EXPORT_FAST_MODE` | true | Use direct EPUB assembly |
 | `CALIBRE_EXECUTABLE` | `ebook-convert` | Path to Calibre converter |
+
+## ExportService API
+
+```python
+from dich_truyen.services.export_service import ExportService
+
+svc = ExportService(books_dir)
+formats = svc.get_supported_formats()            # ["epub", "azw3", "mobi", "pdf"]
+status = svc.get_export_status("book-id")         # {"formats": {"epub": "/path/to/file"}}
+result = await svc.export("book-id", "epub")      # Wraps export_book()
+```
