@@ -312,3 +312,40 @@ def test_export_glossary_csv(books_dir_with_glossary):
     assert response.status_code == 200
     assert "text/csv" in response.headers["content-type"]
     assert "王林" in response.text
+
+
+# --- Style API tests ---
+
+
+def test_list_styles():
+    """List styles returns available styles."""
+    app = create_app()
+    client = TestClient(app)
+    response = client.get("/api/v1/styles")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
+    assert "name" in data[0]
+
+
+def test_get_style():
+    """Get style by name returns full template."""
+    app = create_app()
+    client = TestClient(app)
+    # First get list to find a valid name
+    styles = client.get("/api/v1/styles").json()
+    name = styles[0]["name"]
+    response = client.get(f"/api/v1/styles/{name}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == name
+    assert "guidelines" in data
+
+
+def test_get_style_not_found():
+    """Get nonexistent style returns 404."""
+    app = create_app()
+    client = TestClient(app)
+    response = client.get("/api/v1/styles/nonexistent-style-xyz")
+    assert response.status_code == 404
