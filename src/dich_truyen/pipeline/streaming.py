@@ -174,10 +174,16 @@ class StreamingPipeline:
         
         # Analyze state for resume
         if force:
-            # Determine reset target based on mode
-            # If no URL (translate-only), reset to CRAWLED to skip crawl but force re-translate
-            # If URL provided, reset to PENDING to re-crawl and re-translate
-            reset_to = ChapterStatus.CRAWLED if url is None else ChapterStatus.PENDING
+            # Determine reset target based on mode:
+            # - translate_only: reset to CRAWLED (force re-translate, skip crawl)
+            # - crawl_only: reset to PENDING (force re-crawl everything)
+            # - default: CRAWLED if no URL (re-translate only), PENDING if URL (re-crawl + re-translate)
+            if translate_only:
+                reset_to = ChapterStatus.CRAWLED
+            elif crawl_only:
+                reset_to = ChapterStatus.PENDING
+            else:
+                reset_to = ChapterStatus.CRAWLED if url is None else ChapterStatus.PENDING
             for c in chapters:
                 # Only reset if raw file exists when targeting CRAWLED
                 if reset_to == ChapterStatus.CRAWLED:
