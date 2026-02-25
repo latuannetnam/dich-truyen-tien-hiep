@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -21,12 +21,14 @@ interface ReaderViewProps {
   onNavigate: (chapterIndex: number) => void;
   prevChapter: number | null;
   nextChapter: number | null;
+  translatedChapters: { index: number; title: string }[];
 }
 
 const FONT_SIZE_KEY = "dich-truyen-font-size";
 const DEFAULT_FONT_SIZE = 18;
 const MIN_FONT_SIZE = 14;
 const MAX_FONT_SIZE = 28;
+const LAST_READ_KEY_PREFIX = "dich-truyen-last-read-";
 
 export default function ReaderView({
   bookId,
@@ -39,6 +41,7 @@ export default function ReaderView({
   onNavigate,
   prevChapter,
   nextChapter,
+  translatedChapters,
 }: ReaderViewProps) {
   const [sideBySide, setSideBySide] = useState(false);
   const [fontSize, setFontSize] = useState(() => {
@@ -52,6 +55,20 @@ export default function ReaderView({
     }
     return DEFAULT_FONT_SIZE;
   });
+
+  const leftPaneRef = useRef<HTMLDivElement>(null);
+  const rightPaneRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef(false);
+
+  // Save reading progress
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(
+        `${LAST_READ_KEY_PREFIX}${bookId}`,
+        String(currentIndex)
+      );
+    }
+  }, [bookId, currentIndex]);
 
   const changeFontSize = useCallback(
     (delta: number) => {
@@ -77,6 +94,26 @@ export default function ReaderView({
     return () => window.removeEventListener("keydown", handler);
   }, [prevChapter, nextChapter, onNavigate]);
 
+  // Synced scrolling for side-by-side mode
+  const handleScroll = useCallback((source: "left" | "right") => {
+    if (isSyncingScroll.current) return;
+    isSyncingScroll.current = true;
+
+    const sourceEl = source === "left" ? leftPaneRef.current : rightPaneRef.current;
+    const targetEl = source === "left" ? rightPaneRef.current : leftPaneRef.current;
+
+    if (sourceEl && targetEl) {
+      const scrollPercent =
+        sourceEl.scrollTop / (sourceEl.scrollHeight - sourceEl.clientHeight || 1);
+      targetEl.scrollTop =
+        scrollPercent * (targetEl.scrollHeight - targetEl.clientHeight);
+    }
+
+    requestAnimationFrame(() => {
+      isSyncingScroll.current = false;
+    });
+  }, []);
+
   const renderContent = (text: string) => {
     return text.split("\n").map((line, i) => (
       <p key={i} className={`mb-4 ${line.trim() === "" ? "h-4" : ""}`}>
@@ -84,6 +121,18 @@ export default function ReaderView({
       </p>
     ));
   };
+
+  // Split content into paragraphs for aligned mode
+  const splitParagraphs = (text: string): string[] => {
+    return text
+      .split(/\n\n+/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+  };
+
+  const chineseParagraphs = rawContent ? splitParagraphs(rawContent.content) : [];
+  const vietnameseParagraphs = splitParagraphs(translatedContent.content);
+  const maxParagraphs = Math.max(chineseParagraphs.length, vietnameseParagraphs.length);
 
   return (
     <div className="min-h-screen">
@@ -99,10 +148,19 @@ export default function ReaderView({
             <span className="text-sm truncate max-w-[200px]">{bookTitle}</span>
           </a>
 
-          {/* Center: chapter indicator */}
-          <span className="text-[var(--text-secondary)] text-sm font-[var(--font-fira-code)]">
-            Chapter {currentIndex}
-          </span>
+          {/* Center: chapter dropdown */}
+          <select
+            value={currentIndex}
+            onChange={(e) => onNavigate(parseInt(e.target.value, 10))}
+            className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-3 py-1.5 text-[var(--text-secondary)] text-sm font-[var(--font-fira-code)] focus:border-[var(--color-primary)] outline-none cursor-pointer max-w-[200px]"
+            aria-label="Jump to chapter"
+          >
+            {translatedChapters.map((ch) => (
+              <option key={ch.index} value={ch.index}>
+                Ch. {ch.index} — {ch.title}
+              </option>
+            ))}
+          </select>
 
           {/* Right: controls */}
           <div className="flex items-center gap-3">
@@ -146,31 +204,65 @@ export default function ReaderView({
         </h1>
 
         {sideBySide && rawContent ? (
-          /* Side-by-side mode */
-          <div className="grid grid-cols-2 gap-6 mb-12">
-            {/* Chinese original */}
-            <div className="bg-[var(--bg-surface)] p-8 rounded-xl">
-              <h2 className="text-[var(--text-muted)] text-xs uppercase tracking-wider font-[var(--font-fira-code)] mb-4">
+          /* Paragraph-aligned side-by-side mode */
+          <div className="mb-12">
+            {/* Column headers */}
+            <div className="grid grid-cols-2 gap-6 mb-4">
+              <h2 className="text-[var(--text-muted)] text-xs uppercase tracking-wider font-[var(--font-fira-code)]">
                 原文 (Chinese)
               </h2>
-              <div
-                className="font-[var(--font-noto-serif)] text-[var(--text-secondary)] leading-relaxed"
-                style={{ fontSize }}
-              >
-                {renderContent(rawContent.content)}
-              </div>
-            </div>
-
-            {/* Vietnamese translation */}
-            <div className="bg-[var(--bg-elevated)] p-8 rounded-xl">
-              <h2 className="text-[var(--text-muted)] text-xs uppercase tracking-wider font-[var(--font-fira-code)] mb-4">
+              <h2 className="text-[var(--text-muted)] text-xs uppercase tracking-wider font-[var(--font-fira-code)]">
                 Bản dịch (Vietnamese)
               </h2>
+            </div>
+
+            {/* Synced scroll panes */}
+            <div className="grid grid-cols-2 gap-6" style={{ maxHeight: "70vh" }}>
               <div
-                className="font-[var(--font-noto-serif)] text-[var(--text-primary)] leading-relaxed"
-                style={{ fontSize }}
+                ref={leftPaneRef}
+                onScroll={() => handleScroll("left")}
+                className="bg-[var(--bg-surface)] p-8 rounded-xl overflow-y-auto"
+                style={{ maxHeight: "70vh" }}
               >
-                {renderContent(translatedContent.content)}
+                <div
+                  className="font-[var(--font-noto-serif)] text-[var(--text-secondary)] leading-relaxed"
+                  style={{ fontSize }}
+                >
+                  {/* Paragraph-aligned rows */}
+                  {Array.from({ length: maxParagraphs }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="mb-6 pb-6 border-b border-[var(--border-default)]/30 last:border-0"
+                    >
+                      <p className="whitespace-pre-wrap">
+                        {chineseParagraphs[i] || ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                ref={rightPaneRef}
+                onScroll={() => handleScroll("right")}
+                className="bg-[var(--bg-elevated)] p-8 rounded-xl overflow-y-auto"
+                style={{ maxHeight: "70vh" }}
+              >
+                <div
+                  className="font-[var(--font-noto-serif)] text-[var(--text-primary)] leading-relaxed"
+                  style={{ fontSize }}
+                >
+                  {Array.from({ length: maxParagraphs }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="mb-6 pb-6 border-b border-[var(--border-default)]/30 last:border-0"
+                    >
+                      <p className="whitespace-pre-wrap">
+                        {vietnameseParagraphs[i] || ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
