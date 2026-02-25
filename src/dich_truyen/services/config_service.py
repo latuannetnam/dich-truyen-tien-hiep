@@ -8,11 +8,16 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from dich_truyen.config import AppConfig, get_config, set_config
+from pydantic.fields import FieldInfo
+
+from dich_truyen.config import SECTIONS, AppConfig, get_config, set_config
 
 
 class ConfigService:
     """Read and update application configuration.
+
+    Uses the SECTIONS registry from config.py so adding a new config field
+    only requires editing the Pydantic model — no changes needed here.
 
     Updates are written to .env for persistence. The in-memory config
     is also refreshed so the running server picks up changes immediately.
@@ -21,115 +26,48 @@ class ConfigService:
     def __init__(self, env_file: Optional[Path] = None) -> None:
         self._env_file = env_file or Path(".env")
 
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
     def get_settings(self) -> dict[str, Any]:
         """Get current configuration as a nested dict.
 
-        Reloads from .env on every call so the UI always reflects
-        the actual file contents.
-
-        Returns:
-            Dict with all configuration sections.
-            API keys are masked for security.
+        Auto-generated from SECTIONS registry — no manual field listing.
+        Reloads from .env on every call so the UI always reflects the file.
+        API keys are masked for security.
+        Includes _descriptions extracted from Pydantic Field metadata.
         """
-        # Always reload from .env so we pick up external edits
         set_config(AppConfig.load(self._env_file))
         config = get_config()
-        return {
-            "llm": {
-                "api_key": self._mask_key_optional(config.llm.api_key),
-                "base_url": config.llm.base_url,
-                "model": config.llm.model,
-                "max_tokens": config.llm.max_tokens,
-                "temperature": config.llm.temperature,
-            },
-            "crawler": {
-                "delay_ms": config.crawler.delay_ms,
-                "max_retries": config.crawler.max_retries,
-                "timeout_seconds": config.crawler.timeout_seconds,
-                "user_agent": config.crawler.user_agent,
-            },
-            "translation": {
-                "chunk_size": config.translation.chunk_size,
-                "chunk_overlap": config.translation.chunk_overlap,
-                "progressive_glossary": config.translation.progressive_glossary,
-                "enable_glossary_annotation": config.translation.enable_glossary_annotation,
-                "enable_state_tracking": config.translation.enable_state_tracking,
-                "state_tracking_max_retries": config.translation.state_tracking_max_retries,
-                "glossary_sample_chapters": config.translation.glossary_sample_chapters,
-                "glossary_sample_size": config.translation.glossary_sample_size,
-                "glossary_min_entries": config.translation.glossary_min_entries,
-                "glossary_max_entries": config.translation.glossary_max_entries,
-                "glossary_random_sample": config.translation.glossary_random_sample,
-                "enable_polish_pass": config.translation.enable_polish_pass,
-                "polish_temperature": config.translation.polish_temperature,
-                "polish_max_retries": config.translation.polish_max_retries,
-            },
-            "pipeline": {
-                "translator_workers": config.pipeline.translator_workers,
-                "queue_size": config.pipeline.queue_size,
-                "crawl_delay_ms": config.pipeline.crawl_delay_ms,
-                "glossary_wait_timeout": config.pipeline.glossary_wait_timeout,
-                "glossary_batch_interval": config.pipeline.glossary_batch_interval,
-                "glossary_scorer_rebuild_threshold": config.pipeline.glossary_scorer_rebuild_threshold,
-            },
-            "export": {
-                "parallel_workers": config.export.parallel_workers,
-                "volume_size": config.export.volume_size,
-                "fast_mode": config.export.fast_mode,
-            },
-            "calibre": {
-                "path": config.calibre.path,
-            },
-            "crawler_llm": {
-                "api_key": self._mask_key_optional(config.crawler_llm.api_key),
-                "base_url": config.crawler_llm.base_url,
-                "model": config.crawler_llm.model,
-                "max_tokens": config.crawler_llm.max_tokens,
-                "temperature": config.crawler_llm.temperature,
-            },
-            "glossary_llm": {
-                "api_key": self._mask_key_optional(config.glossary_llm.api_key),
-                "base_url": config.glossary_llm.base_url,
-                "model": config.glossary_llm.model,
-                "max_tokens": config.glossary_llm.max_tokens,
-                "temperature": config.glossary_llm.temperature,
-            },
-            "translator_llm": {
-                "api_key": self._mask_key_optional(config.translator_llm.api_key),
-                "base_url": config.translator_llm.base_url,
-                "model": config.translator_llm.model,
-                "max_tokens": config.translator_llm.max_tokens,
-                "temperature": config.translator_llm.temperature,
-            },
-        }
+
+        result: dict[str, Any] = {}
+        descriptions: dict[str, dict[str, str]] = {}
+        for section_key, attr_name in SECTIONS.items():
+            sub = getattr(config, attr_name)
+            data = sub.model_dump()
+            # Mask api_key if present
+            if "api_key" in data:
+                data["api_key"] = self._mask_key_optional(data["api_key"])
+            result[section_key] = data
+            # Extract field descriptions
+            section_desc: dict[str, str] = {}
+            for name, field_info in type(sub).model_fields.items():
+                if field_info.description:
+                    section_desc[name] = field_info.description
+            descriptions[section_key] = section_desc
+
+        result["_descriptions"] = descriptions
+        return result
 
     def update_settings(self, updates: dict[str, Any]) -> dict[str, Any]:
         """Update configuration from a partial dict.
 
         Only values that differ from Pydantic defaults are written to .env.
         Values matching defaults are commented out (prefixed with #) for reference.
-
-        Args:
-            updates: Nested dict matching get_settings() structure.
-                     Only provided keys are updated.
-
-        Returns:
-            Updated full settings dict.
         """
         defaults = self._get_defaults()
-
-        # Map nested dict keys to env var names
-        section_prefix_map = {
-            "llm": "OPENAI_",
-            "crawler": "CRAWLER_",
-            "translation": "TRANSLATION_",
-            "pipeline": "PIPELINE_",
-            "export": "EXPORT_",
-            "calibre": "CALIBRE_",
-            "crawler_llm": "CRAWLER_LLM_",
-            "glossary_llm": "GLOSSARY_LLM_",
-            "translator_llm": "TRANSLATOR_LLM_",
-        }
+        prefix_map = self._get_prefix_map()
 
         write_vars: dict[str, str] = {}  # Non-default values to write
         comment_vars: set[str] = set()   # Default values to comment out
@@ -137,7 +75,10 @@ class ConfigService:
         for section, values in updates.items():
             if not isinstance(values, dict):
                 continue
-            prefix = section_prefix_map.get(section, "")
+            # Skip metadata keys (e.g. _descriptions) and unknown sections
+            if section.startswith("_") or section not in prefix_map:
+                continue
+            prefix = prefix_map[section]
             section_defaults = defaults.get(section, {})
 
             for key, value in values.items():
@@ -147,13 +88,11 @@ class ConfigService:
                 env_name = f"{prefix}{key.upper()}"
                 default_value = section_defaults.get(key)
 
-                # Compare value against default
                 if self._is_default(value, default_value):
                     comment_vars.add(env_name)
                 else:
                     write_vars[env_name] = str(value)
 
-        # Write to .env file
         self._update_env_file(write_vars, comment_vars)
 
         # Update environment: set non-default vars, remove defaults
@@ -164,64 +103,6 @@ class ConfigService:
         set_config(AppConfig.load(self._env_file))
 
         return self.get_settings()
-
-    def _get_defaults(self) -> dict[str, dict[str, Any]]:
-        """Build a map of all Pydantic Field default values.
-
-        Uses model_fields metadata to get the true defaults defined in
-        Field(..., default=X), NOT from environment variables.
-        """
-        from pydantic.fields import FieldInfo
-
-        from dich_truyen.config import (
-            CalibreConfig,
-            CrawlerConfig,
-            CrawlerLLMConfig,
-            ExportConfig,
-            GlossaryLLMConfig,
-            LLMConfig,
-            PipelineConfig,
-            TranslationConfig,
-            TranslatorLLMConfig,
-        )
-
-        def _field_defaults(model_cls: type) -> dict[str, Any]:
-            result: dict[str, Any] = {}
-            for name, field_info in model_cls.model_fields.items():
-                if isinstance(field_info, FieldInfo) and field_info.default is not None:
-                    result[name] = field_info.default
-            return result
-
-        return {
-            "llm": _field_defaults(LLMConfig),
-            "crawler": _field_defaults(CrawlerConfig),
-            "translation": _field_defaults(TranslationConfig),
-            "pipeline": _field_defaults(PipelineConfig),
-            "export": _field_defaults(ExportConfig),
-            "calibre": _field_defaults(CalibreConfig),
-            "crawler_llm": _field_defaults(CrawlerLLMConfig),
-            "glossary_llm": _field_defaults(GlossaryLLMConfig),
-            "translator_llm": _field_defaults(TranslatorLLMConfig),
-        }
-
-    @staticmethod
-    def _is_default(value: Any, default: Any) -> bool:
-        """Check if a value matches its default."""
-        if default is None:
-            return False  # Unknown default, always save
-        # Handle boolean comparison (frontend may send string "true"/"false")
-        if isinstance(default, bool):
-            if isinstance(value, bool):
-                return value == default
-            return str(value).lower() == str(default).lower()
-        # Handle numeric comparison (avoid str(0) != str(0.0) mismatch)
-        if isinstance(default, (int, float)):
-            try:
-                return float(value) == float(default)
-            except (ValueError, TypeError):
-                pass
-        # Fallback: string comparison
-        return str(value) == str(default)
 
     def test_connection(self) -> dict[str, Any]:
         """Test LLM API connection.
@@ -250,6 +131,60 @@ class ConfigService:
         except Exception as e:
             return {"success": False, "message": str(e)}
 
+    # ------------------------------------------------------------------
+    # Internals — auto-derived from model metadata
+    # ------------------------------------------------------------------
+
+    def _get_prefix_map(self) -> dict[str, str]:
+        """Auto-derive section → env_prefix map from Pydantic models."""
+        config = get_config()
+        result: dict[str, str] = {}
+        for section_key, attr_name in SECTIONS.items():
+            sub = getattr(config, attr_name)
+            mc = sub.model_config if hasattr(sub, "model_config") else {}
+            result[section_key] = mc.get("env_prefix", "")
+        return result
+
+    def _get_defaults(self) -> dict[str, dict[str, Any]]:
+        """Build a map of all Pydantic Field default values.
+
+        Uses model_fields metadata to get the true defaults defined in
+        Field(..., default=X), NOT from environment variables.
+        """
+        config = get_config()
+        result: dict[str, dict[str, Any]] = {}
+        for section_key, attr_name in SECTIONS.items():
+            sub = getattr(config, attr_name)
+            field_defaults: dict[str, Any] = {}
+            for name, field_info in type(sub).model_fields.items():
+                if isinstance(field_info, FieldInfo) and field_info.default is not None:
+                    field_defaults[name] = field_info.default
+            result[section_key] = field_defaults
+        return result
+
+    @staticmethod
+    def _is_default(value: Any, default: Any) -> bool:
+        """Check if a value matches its default."""
+        if default is None:
+            return False  # Unknown default, always save
+        # Handle boolean comparison (frontend may send string "true"/"false")
+        if isinstance(default, bool):
+            if isinstance(value, bool):
+                return value == default
+            return str(value).lower() == str(default).lower()
+        # Handle numeric comparison (avoid str(0) != str(0.0) mismatch)
+        if isinstance(default, (int, float)):
+            try:
+                return float(value) == float(default)
+            except (ValueError, TypeError):
+                pass
+        # Fallback: string comparison
+        return str(value) == str(default)
+
+    # ------------------------------------------------------------------
+    # Key masking
+    # ------------------------------------------------------------------
+
     def _mask_key(self, key: str) -> str:
         """Mask API key for display."""
         if not key or len(key) < 8:
@@ -268,6 +203,10 @@ class ConfigService:
             return "••••••••"
         return key[:4] + "••••" + key[-4:]
 
+    # ------------------------------------------------------------------
+    # .env file management
+    # ------------------------------------------------------------------
+
     def _update_env_file(
         self, write_vars: dict[str, str], comment_vars: set[str] | None = None
     ) -> None:
@@ -278,7 +217,6 @@ class ConfigService:
         Handles commented-out lines: if a key was previously commented,
         it gets uncommented when set to a non-default value.
         """
-        # Backup before modifying
         self._backup_env_file()
 
         comment_vars = comment_vars or set()
@@ -297,7 +235,6 @@ class ConfigService:
                         handled_keys.add(key)
                         continue
                     if key in comment_vars:
-                        # Comment out: value matches default
                         lines.append(f"# {stripped}")
                         handled_keys.add(key)
                         continue
@@ -307,7 +244,6 @@ class ConfigService:
                     uncommented = stripped.lstrip("#").strip()
                     key = uncommented.split("=", 1)[0].strip()
                     if key in write_vars:
-                        # Uncomment and set new value
                         lines.append(f"{key}={write_vars[key]}")
                         handled_keys.add(key)
                         continue

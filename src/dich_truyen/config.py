@@ -1,12 +1,16 @@
 """Configuration management with environment variables and CLI overrides."""
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from rich.console import Console
 from rich.table import Table
+
+# ---------------------------------------------------------------------------
+# Sub-config models
+# ---------------------------------------------------------------------------
 
 
 class LLMConfig(BaseSettings):
@@ -21,40 +25,35 @@ class LLMConfig(BaseSettings):
     temperature: float = Field(default=0.7, description="Temperature for generation")
 
 
-class CrawlerLLMConfig(BaseSettings):
+class TaskLLMConfig(BaseSettings):
+    """Base class for task-specific LLM overrides.
+
+    Empty fields fall back to the default LLM config.
+    """
+
+    api_key: str = Field(default="", description="API key")
+    base_url: str = Field(default="", description="API base URL")
+    model: str = Field(default="", description="Model name")
+    max_tokens: int = Field(default=0, description="Max tokens per request")
+    temperature: float = Field(default=0.0, description="Temperature")
+
+
+class CrawlerLLMConfig(TaskLLMConfig):
     """LLM configuration for crawler/pattern discovery."""
 
     model_config = SettingsConfigDict(env_prefix="CRAWLER_LLM_")
 
-    api_key: str = Field(default="", description="API key")
-    base_url: str = Field(default="", description="API base URL")
-    model: str = Field(default="", description="Model name")
-    max_tokens: int = Field(default=0, description="Max tokens per request")
-    temperature: float = Field(default=0.0, description="Temperature")
 
-
-class GlossaryLLMConfig(BaseSettings):
+class GlossaryLLMConfig(TaskLLMConfig):
     """LLM configuration for glossary generation."""
 
     model_config = SettingsConfigDict(env_prefix="GLOSSARY_LLM_")
 
-    api_key: str = Field(default="", description="API key")
-    base_url: str = Field(default="", description="API base URL")
-    model: str = Field(default="", description="Model name")
-    max_tokens: int = Field(default=0, description="Max tokens per request")
-    temperature: float = Field(default=0.0, description="Temperature")
 
-
-class TranslatorLLMConfig(BaseSettings):
+class TranslatorLLMConfig(TaskLLMConfig):
     """LLM configuration for translation."""
 
     model_config = SettingsConfigDict(env_prefix="TRANSLATOR_LLM_")
-
-    api_key: str = Field(default="", description="API key")
-    base_url: str = Field(default="", description="API base URL")
-    model: str = Field(default="", description="Model name")
-    max_tokens: int = Field(default=0, description="Max tokens per request")
-    temperature: float = Field(default=0.0, description="Temperature")
 
 
 class CrawlerConfig(BaseSettings):
@@ -62,7 +61,7 @@ class CrawlerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="CRAWLER_")
 
-    delay_ms: int = Field(default=1000, description="Delay between requests in ms")
+    delay_ms: int = Field(default=1000, description="Delay between HTTP requests in ms (rate limiting)")
     max_retries: int = Field(default=3, description="Max retry attempts")
     timeout_seconds: int = Field(default=30, description="Request timeout in seconds")
     user_agent: str = Field(
@@ -78,32 +77,45 @@ class TranslationConfig(BaseSettings):
 
     chunk_size: int = Field(default=2000, description="Characters per translation chunk")
     chunk_overlap: int = Field(default=300, description="Overlap characters for context")
-    progressive_glossary: bool = Field(default=True, description="Extract new terms during translation")
-    
+    progressive_glossary: bool = Field(
+        default=True, description="Extract new terms during translation"
+    )
+
     # Quality enhancement features
-    enable_glossary_annotation: bool = Field(default=True, description="Annotate source text with glossary terms")
-    enable_state_tracking: bool = Field(default=True, description="Track narrative state across chunks")
-    state_tracking_max_retries: int = Field(default=2, description="Max retries for state extraction before disabling")
-    
+    enable_glossary_annotation: bool = Field(
+        default=True, description="Annotate source text with glossary terms"
+    )
+    enable_state_tracking: bool = Field(
+        default=True, description="Track narrative state across chunks"
+    )
+    state_tracking_max_retries: int = Field(
+        default=2, description="Max retries for state extraction before disabling"
+    )
+
     # Glossary generation settings
-    glossary_sample_chapters: int = Field(default=5, description="Number of chapters to sample for glossary")
-    glossary_sample_size: int = Field(default=3000, description="Characters to take from each sample chapter")
-    glossary_min_entries: int = Field(default=20, description="Minimum glossary entries to generate")
+    glossary_sample_chapters: int = Field(
+        default=5, description="Number of chapters to sample for glossary"
+    )
+    glossary_sample_size: int = Field(
+        default=3000, description="Characters to take from each sample chapter"
+    )
+    glossary_min_entries: int = Field(
+        default=20, description="Minimum glossary entries to generate"
+    )
     glossary_max_entries: int = Field(default=100, description="Maximum glossary entries to keep")
-    glossary_random_sample: bool = Field(default=True, description="Randomly select sample chapters")
-    
+    glossary_random_sample: bool = Field(
+        default=True, description="Randomly select sample chapters"
+    )
+
     # Two-pass translation (Editor-in-Chief)
     enable_polish_pass: bool = Field(
-        default=True,
-        description="Enable second pass for polishing translation"
+        default=True, description="Enable second pass for polishing translation"
     )
     polish_temperature: float = Field(
-        default=0.4,
-        description="Temperature for polish pass (lower = more conservative edits)"
+        default=0.4, description="Temperature for polish pass (lower = more conservative edits)"
     )
     polish_max_retries: int = Field(
-        default=1,
-        description="Max retries for polish pass before falling back to draft"
+        default=1, description="Max retries for polish pass before falling back to draft"
     )
 
 
@@ -130,23 +142,46 @@ class PipelineConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="PIPELINE_")
 
-    translator_workers: int = Field(default=3, description="Number of parallel translation workers")
-    queue_size: int = Field(default=10, description="Max chapters buffered between crawl and translate")
-    crawl_delay_ms: int = Field(default=1000, description="Delay between chapter downloads in ms")
-    
-    # Solution 4: Glossary sync settings
+    translator_workers: int = Field(
+        default=3, description="Number of parallel translation workers"
+    )
+    queue_size: int = Field(
+        default=10, description="Max chapters buffered between crawl and translate"
+    )
+    crawl_delay_ms: int = Field(
+        default=1000, description="Delay between chapter downloads in streaming pipeline in ms"
+    )
+
+    # Glossary sync settings
     glossary_wait_timeout: int = Field(
-        default=60, 
-        description="Max seconds to wait for initial glossary before proceeding with empty"
+        default=60,
+        description="Max seconds to wait for initial glossary before proceeding with empty",
     )
     glossary_batch_interval: int = Field(
-        default=60, 
-        description="Seconds between batch progressive extraction runs"
+        default=60, description="Seconds between batch progressive extraction runs"
     )
     glossary_scorer_rebuild_threshold: int = Field(
-        default=5,
-        description="Rebuild TF-IDF scorer every N version increments"
+        default=5, description="Rebuild TF-IDF scorer every N version increments"
     )
+
+
+# ---------------------------------------------------------------------------
+# Main AppConfig with SECTIONS registry
+# ---------------------------------------------------------------------------
+
+# Maps section key → AppConfig attribute name.
+# ConfigService uses this to auto-generate serialization and prefix maps.
+SECTIONS: dict[str, str] = {
+    "llm": "llm",
+    "crawler": "crawler",
+    "translation": "translation",
+    "pipeline": "pipeline",
+    "export": "export",
+    "calibre": "calibre",
+    "crawler_llm": "crawler_llm",
+    "glossary_llm": "glossary_llm",
+    "translator_llm": "translator_llm",
+}
 
 
 class AppConfig(BaseSettings):
@@ -164,7 +199,7 @@ class AppConfig(BaseSettings):
     calibre: CalibreConfig = Field(default_factory=CalibreConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
-    
+
     # Task-specific LLM configs (fallback to llm if not set)
     crawler_llm: CrawlerLLMConfig = Field(default_factory=CrawlerLLMConfig)
     glossary_llm: GlossaryLLMConfig = Field(default_factory=GlossaryLLMConfig)
@@ -192,7 +227,10 @@ class AppConfig(BaseSettings):
         )
 
 
-# Global config instance (lazy loaded)
+# ---------------------------------------------------------------------------
+# Global config singleton
+# ---------------------------------------------------------------------------
+
 _config: Optional[AppConfig] = None
 
 
@@ -210,27 +248,29 @@ def set_config(config: AppConfig) -> None:
     _config = config
 
 
+# ---------------------------------------------------------------------------
+# LLM config helpers
+# ---------------------------------------------------------------------------
+
+
 def get_effective_llm_config(
-    specific: Union[CrawlerLLMConfig, GlossaryLLMConfig, TranslatorLLMConfig],
+    specific: TaskLLMConfig,
     fallback: LLMConfig,
     task_name: Optional[str] = None,
 ) -> LLMConfig:
     """Merge specific LLM config with fallback for unset values.
-    
+
     This allows task-specific configs (crawler_llm, glossary_llm, translator_llm)
     to override only the values they set, falling back to the default llm config.
-    
+
     Args:
         specific: Task-specific config (CrawlerLLMConfig, GlossaryLLMConfig, etc.)
         fallback: Default LLMConfig to use for unset values
         task_name: Optional task name for detailed logging (e.g., "Crawler", "Glossary")
-        
+
     Returns:
         LLMConfig with merged values
     """
-    console = Console()
-    
-    # Build effective config
     effective = LLMConfig(
         api_key=specific.api_key or fallback.api_key,
         base_url=specific.base_url or fallback.base_url,
@@ -238,57 +278,48 @@ def get_effective_llm_config(
         max_tokens=specific.max_tokens or fallback.max_tokens,
         temperature=specific.temperature if specific.temperature > 0 else fallback.temperature,
     )
-    
-    # Detailed logging if task_name provided
+
     if task_name:
+        console = Console()
         console.print(f"[blue]  {task_name} LLM Config:[/blue]")
-        
-        # Model
-        if specific.model:
-            console.print(f"[blue]    • Model: {effective.model} (specific)[/blue]")
-        else:
-            console.print(f"[blue]    • Model: {effective.model} (from default)[/blue]")
-        
-        # API Key (masked for security)
-        if specific.api_key:
-            masked = effective.api_key[:8] + "..." if len(effective.api_key) > 8 else "***"
-            console.print(f"[blue]    • API Key: {masked} (specific)[/blue]")
-        else:
-            masked = effective.api_key[:8] + "..." if len(effective.api_key) > 8 else "***"
-            console.print(f"[blue]    • API Key: {masked} (from default)[/blue]")
-        
-        # Base URL
-        if specific.base_url:
-            console.print(f"[blue]    • Base URL: {effective.base_url} (specific)[/blue]")
-        else:
-            console.print(f"[blue]    • Base URL: {effective.base_url} (from default)[/blue]")
-        
-        # Max Tokens
-        if specific.max_tokens:
-            console.print(f"[blue]    • Max Tokens: {effective.max_tokens} (specific)[/blue]")
-        else:
-            console.print(f"[blue]    • Max Tokens: {effective.max_tokens} (from default)[/blue]")
-        
-        # Temperature
-        if specific.temperature > 0:
-            console.print(f"[blue]    • Temperature: {effective.temperature} (specific)[/blue]")
-        else:
-            console.print(f"[blue]    • Temperature: {effective.temperature} (from default)[/blue]")
-    
+        _fields = [
+            ("Model", "model", specific.model),
+            ("API Key", None, specific.api_key),
+            ("Base URL", "base_url", specific.base_url),
+            ("Max Tokens", "max_tokens", specific.max_tokens),
+            ("Temperature", None, specific.temperature),
+        ]
+        for label, attr, spec_val in _fields:
+            val = getattr(effective, attr) if attr else None
+            is_specific = bool(spec_val) if label != "Temperature" else spec_val > 0
+            source = "(specific)" if is_specific else "(from default)"
+            if label == "API Key":
+                display = (
+                    effective.api_key[:8] + "..."
+                    if len(effective.api_key) > 8
+                    else "***"
+                )
+                console.print(f"[blue]    • {label}: {display} {source}[/blue]")
+            elif label == "Temperature":
+                console.print(
+                    f"[blue]    • {label}: {effective.temperature} {source}[/blue]"
+                )
+            else:
+                console.print(f"[blue]    • {label}: {val} {source}[/blue]")
+
     return effective
 
 
 def log_llm_config_summary() -> None:
     """Log a summary table of all LLM configurations.
-    
+
     Shows default config and any task-specific overrides in a clear table format.
     """
     console = Console()
     app_config = get_config()
-    
+
     console.print("\n[bold blue]=== LLM Configuration ===[/bold blue]")
-    
-    # Create table
+
     table = Table(show_header=True, header_style="bold blue")
     table.add_column("Task", style="cyan", width=12)
     table.add_column("Model", style="green")
@@ -296,7 +327,7 @@ def log_llm_config_summary() -> None:
     table.add_column("Max Tokens", style="magenta", justify="right")
     table.add_column("Temperature", style="magenta", justify="right")
     table.add_column("Source", style="dim")
-    
+
     # Default config
     table.add_row(
         "Default",
@@ -304,74 +335,38 @@ def log_llm_config_summary() -> None:
         app_config.llm.base_url,
         str(app_config.llm.max_tokens),
         str(app_config.llm.temperature),
-        "OPENAI_*"
+        "OPENAI_*",
     )
-    
-    # Crawler config
-    if app_config.crawler_llm.model or app_config.crawler_llm.api_key:
-        effective = get_effective_llm_config(app_config.crawler_llm, app_config.llm)
-        source = "CRAWLER_LLM_*" if app_config.crawler_llm.model else "OPENAI_* (fallback)"
-        table.add_row(
-            "Crawler",
-            effective.model,
-            effective.base_url,
-            str(effective.max_tokens),
-            str(effective.temperature),
-            source
-        )
-    else:
-        table.add_row(
-            "Crawler",
-            app_config.llm.model,
-            app_config.llm.base_url,
-            str(app_config.llm.max_tokens),
-            str(app_config.llm.temperature),
-            "OPENAI_* (fallback)"
-        )
-    
-    # Glossary config
-    if app_config.glossary_llm.model or app_config.glossary_llm.api_key:
-        effective = get_effective_llm_config(app_config.glossary_llm, app_config.llm)
-        source = "GLOSSARY_LLM_*" if app_config.glossary_llm.model else "OPENAI_* (fallback)"
-        table.add_row(
-            "Glossary",
-            effective.model,
-            effective.base_url,
-            str(effective.max_tokens),
-            str(effective.temperature),
-            source
-        )
-    else:
-        table.add_row(
-            "Glossary",
-            app_config.llm.model,
-            app_config.llm.base_url,
-            str(app_config.llm.max_tokens),
-            str(app_config.llm.temperature),
-            "OPENAI_* (fallback)"
-        )
-    
-    # Translator config
-    if app_config.translator_llm.model or app_config.translator_llm.api_key:
-        effective = get_effective_llm_config(app_config.translator_llm, app_config.llm)
-        source = "TRANSLATOR_LLM_*" if app_config.translator_llm.model else "OPENAI_* (fallback)"
-        table.add_row(
-            "Translator",
-            effective.model,
-            effective.base_url,
-            str(effective.max_tokens),
-            str(effective.temperature),
-            source
-        )
-    else:
-        table.add_row(
-            "Translator",
-            app_config.llm.model,
-            app_config.llm.base_url,
-            str(app_config.llm.max_tokens),
-            str(app_config.llm.temperature),
-            "OPENAI_* (fallback)"
-        )
-    
+
+    # Task-specific configs
+    task_configs: list[tuple[str, TaskLLMConfig]] = [
+        ("Crawler", app_config.crawler_llm),
+        ("Glossary", app_config.glossary_llm),
+        ("Translator", app_config.translator_llm),
+    ]
+
+    for task_name, task_cfg in task_configs:
+        has_override = bool(task_cfg.model or task_cfg.api_key)
+        if has_override:
+            effective = get_effective_llm_config(task_cfg, app_config.llm)
+            source = f"{task_name.upper()}_LLM_*" if task_cfg.model else "OPENAI_* (fallback)"
+            table.add_row(
+                task_name,
+                effective.model,
+                effective.base_url,
+                str(effective.max_tokens),
+                str(effective.temperature),
+                source,
+            )
+        else:
+            table.add_row(
+                task_name,
+                app_config.llm.model,
+                app_config.llm.base_url,
+                str(app_config.llm.max_tokens),
+                str(app_config.llm.temperature),
+                "OPENAI_* (fallback)",
+            )
+
     console.print(table)
     console.print()

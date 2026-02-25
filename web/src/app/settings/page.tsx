@@ -15,7 +15,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { getSettings, updateSettings, testConnection } from "@/lib/api";
-import type { AppSettings, TaskLLMConfig } from "@/lib/types";
+import type { AppSettings, TaskLLMConfig, FieldDescriptions } from "@/lib/types";
 import { useToast } from "@/components/ui/ToastProvider";
 
 type Tab = "basic" | "advanced";
@@ -229,6 +229,8 @@ function BasicSettings({
   testResult: { success: boolean; message: string } | null;
   onTestConnection: () => void;
 }) {
+  const d = (section: string, field: string) =>
+    settings._descriptions?.[section]?.[field];
   return (
     <>
       {/* API Configuration */}
@@ -274,12 +276,14 @@ function BasicSettings({
             type="text"
             value={settings.llm.model}
             onChange={(v) => updateField("llm", "model", v)}
+            hint={d("llm", "model")}
           />
           <NumberField
             id="maxTokens"
             label="Max Tokens"
             value={settings.llm.max_tokens}
             onChange={(v) => updateField("llm", "max_tokens", v)}
+            hint={d("llm", "max_tokens")}
           />
           <NumberField
             id="temperature"
@@ -289,6 +293,7 @@ function BasicSettings({
             step={0.1}
             min={0}
             max={2}
+            hint={d("llm", "temperature")}
           />
           <div className="flex items-end pb-1">
             <TestConnectionButton
@@ -308,18 +313,21 @@ function BasicSettings({
             label="Delay (ms)"
             value={settings.crawler.delay_ms}
             onChange={(v) => updateField("crawler", "delay_ms", v)}
+            hint={d("crawler", "delay_ms")}
           />
           <NumberField
             id="crawlerTimeout"
             label="Timeout (s)"
             value={settings.crawler.timeout_seconds}
             onChange={(v) => updateField("crawler", "timeout_seconds", v)}
+            hint={d("crawler", "timeout_seconds")}
           />
           <NumberField
             id="crawlerRetries"
             label="Max Retries"
             value={settings.crawler.max_retries}
             onChange={(v) => updateField("crawler", "max_retries", v)}
+            hint={d("crawler", "max_retries")}
           />
         </div>
       </Section>
@@ -332,12 +340,14 @@ function BasicSettings({
             label="Chunk Size"
             value={settings.translation.chunk_size}
             onChange={(v) => updateField("translation", "chunk_size", v)}
+            hint={d("translation", "chunk_size")}
           />
           <NumberField
             id="chunkOverlap"
             label="Overlap"
             value={settings.translation.chunk_overlap}
             onChange={(v) => updateField("translation", "chunk_overlap", v)}
+            hint={d("translation", "chunk_overlap")}
           />
           <NumberField
             id="polishTemp"
@@ -347,6 +357,7 @@ function BasicSettings({
             step={0.1}
             min={0}
             max={2}
+            hint={d("translation", "polish_temperature")}
           />
           <div className="flex items-end gap-6 pb-1">
             <CheckboxField
@@ -355,6 +366,7 @@ function BasicSettings({
               onChange={(v) =>
                 updateField("translation", "enable_polish_pass", v)
               }
+              hint={d("translation", "enable_polish_pass")}
             />
             <CheckboxField
               label="Progressive Glossary"
@@ -362,6 +374,7 @@ function BasicSettings({
               onChange={(v) =>
                 updateField("translation", "progressive_glossary", v)
               }
+              hint={d("translation", "progressive_glossary")}
             />
           </div>
         </div>
@@ -376,18 +389,21 @@ function BasicSettings({
             value={settings.pipeline.translator_workers}
             onChange={(v) => updateField("pipeline", "translator_workers", v)}
             min={1}
+            hint={d("pipeline", "translator_workers")}
           />
           <NumberField
             id="queueSize"
             label="Queue Size"
             value={settings.pipeline.queue_size}
             onChange={(v) => updateField("pipeline", "queue_size", v)}
+            hint={d("pipeline", "queue_size")}
           />
           <NumberField
             id="crawlDelay"
             label="Crawl Delay (ms)"
             value={settings.pipeline.crawl_delay_ms}
             onChange={(v) => updateField("pipeline", "crawl_delay_ms", v)}
+            hint={d("pipeline", "crawl_delay_ms")}
           />
         </div>
       </Section>
@@ -401,6 +417,7 @@ function BasicSettings({
             value={settings.export.parallel_workers}
             onChange={(v) => updateField("export", "parallel_workers", v)}
             min={1}
+            hint={d("export", "parallel_workers")}
           />
           <NumberField
             id="volumeSize"
@@ -408,12 +425,14 @@ function BasicSettings({
             value={settings.export.volume_size}
             onChange={(v) => updateField("export", "volume_size", v)}
             min={0}
+            hint={d("export", "volume_size")}
           />
           <div className="flex items-end pb-1">
             <CheckboxField
               label="Fast Mode"
               checked={settings.export.fast_mode}
               onChange={(v) => updateField("export", "fast_mode", v)}
+              hint={d("export", "fast_mode")}
             />
           </div>
         </div>
@@ -435,6 +454,8 @@ function AdvancedSettings({
     v: string | number | boolean
   ) => void;
 }) {
+  const d = (section: string, field: string) =>
+    settings._descriptions?.[section]?.[field];
   return (
     <>
       {/* Crawler advanced */}
@@ -451,6 +472,9 @@ function AdvancedSettings({
               }
               className={inputClass}
             />
+            {d("crawler", "user_agent") && (
+              <p className="text-xs text-[var(--text-tertiary)] mt-1">{d("crawler", "user_agent")}</p>
+            )}
           </div>
         </div>
       </Section>
@@ -465,6 +489,7 @@ function AdvancedSettings({
               onChange={(v) =>
                 updateField("translation", "enable_glossary_annotation", v)
               }
+              hint={d("translation", "enable_glossary_annotation")}
             />
             <CheckboxField
               label="State Tracking"
@@ -472,6 +497,7 @@ function AdvancedSettings({
               onChange={(v) =>
                 updateField("translation", "enable_state_tracking", v)
               }
+              hint={d("translation", "enable_state_tracking")}
             />
             <CheckboxField
               label="Random Glossary Samples"
@@ -479,6 +505,7 @@ function AdvancedSettings({
               onChange={(v) =>
                 updateField("translation", "glossary_random_sample", v)
               }
+              hint={d("translation", "glossary_random_sample")}
             />
           </div>
           <NumberField
@@ -488,6 +515,7 @@ function AdvancedSettings({
             onChange={(v) =>
               updateField("translation", "state_tracking_max_retries", v)
             }
+            hint={d("translation", "state_tracking_max_retries")}
           />
           <NumberField
             id="polishMaxRetries"
@@ -496,6 +524,7 @@ function AdvancedSettings({
             onChange={(v) =>
               updateField("translation", "polish_max_retries", v)
             }
+            hint={d("translation", "polish_max_retries")}
           />
           <NumberField
             id="glossarySampleChapters"
@@ -504,6 +533,7 @@ function AdvancedSettings({
             onChange={(v) =>
               updateField("translation", "glossary_sample_chapters", v)
             }
+            hint={d("translation", "glossary_sample_chapters")}
           />
           <NumberField
             id="glossarySampleSize"
@@ -512,6 +542,7 @@ function AdvancedSettings({
             onChange={(v) =>
               updateField("translation", "glossary_sample_size", v)
             }
+            hint={d("translation", "glossary_sample_size")}
           />
           <NumberField
             id="glossaryMinEntries"
@@ -520,6 +551,7 @@ function AdvancedSettings({
             onChange={(v) =>
               updateField("translation", "glossary_min_entries", v)
             }
+            hint={d("translation", "glossary_min_entries")}
           />
           <NumberField
             id="glossaryMaxEntries"
@@ -528,6 +560,7 @@ function AdvancedSettings({
             onChange={(v) =>
               updateField("translation", "glossary_max_entries", v)
             }
+            hint={d("translation", "glossary_max_entries")}
           />
         </div>
       </Section>
@@ -542,6 +575,7 @@ function AdvancedSettings({
             onChange={(v) =>
               updateField("pipeline", "glossary_wait_timeout", v)
             }
+            hint={d("pipeline", "glossary_wait_timeout")}
           />
           <NumberField
             id="glossaryBatchInterval"
@@ -550,6 +584,7 @@ function AdvancedSettings({
             onChange={(v) =>
               updateField("pipeline", "glossary_batch_interval", v)
             }
+            hint={d("pipeline", "glossary_batch_interval")}
           />
           <NumberField
             id="glossaryScorerRebuild"
@@ -558,6 +593,7 @@ function AdvancedSettings({
             onChange={(v) =>
               updateField("pipeline", "glossary_scorer_rebuild_threshold", v)
             }
+            hint={d("pipeline", "glossary_scorer_rebuild_threshold")}
           />
         </div>
       </Section>
@@ -654,6 +690,7 @@ function NumberField({
   step,
   min,
   max,
+  hint,
 }: {
   id: string;
   label: string;
@@ -663,6 +700,7 @@ function NumberField({
   step?: number;
   min?: number;
   max?: number;
+  hint?: string;
 }) {
   return (
     <div>
@@ -687,6 +725,9 @@ function NumberField({
         }}
         className={inputClass}
       />
+      {hint && (
+        <p className="text-xs text-[var(--text-tertiary)] mt-1">{hint}</p>
+      )}
     </div>
   );
 }
@@ -695,44 +736,51 @@ function CheckboxField({
   label,
   checked,
   onChange,
+  hint,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  hint?: string;
 }) {
   return (
-    <label className="flex items-center gap-3 cursor-pointer group">
-      <div
-        className={`
-          w-5 h-5 rounded flex items-center justify-center
-          transition-colors duration-150
-          ${
-            checked
-              ? "bg-[var(--color-primary)] border-[var(--color-primary)]"
-              : "bg-[var(--bg-surface)] border border-[var(--border-default)] group-hover:border-[var(--border-hover)]"
-          }
-        `}
-      >
-        {checked && (
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path
-              d="M2 6L5 9L10 3"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
-      </div>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="sr-only"
-      />
-      <span className="text-[var(--text-secondary)] text-sm">{label}</span>
-    </label>
+    <div>
+      <label className="flex items-center gap-3 cursor-pointer group">
+        <div
+          className={`
+            w-5 h-5 rounded flex items-center justify-center
+            transition-colors duration-150
+            ${
+              checked
+                ? "bg-[var(--color-primary)] border-[var(--color-primary)]"
+                : "bg-[var(--bg-surface)] border border-[var(--border-default)] group-hover:border-[var(--border-hover)]"
+            }
+          `}
+        >
+          {checked && (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M2 6L5 9L10 3"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </div>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="sr-only"
+        />
+        <span className="text-[var(--text-secondary)] text-sm">{label}</span>
+      </label>
+      {hint && (
+        <p className="text-xs text-[var(--text-tertiary)] mt-1 ml-8">{hint}</p>
+      )}
+    </div>
   );
 }
 

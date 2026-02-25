@@ -144,7 +144,11 @@ export interface AppSettings {
   crawler_llm: TaskLLMConfig;
   glossary_llm: TaskLLMConfig;
   translator_llm: TaskLLMConfig;
+  _descriptions: FieldDescriptions;
 }
+
+/** Nested map of section → field → description string. */
+export type FieldDescriptions = Record<string, Record<string, string>>;
 
 /** Task-specific LLM override config. */
 export interface TaskLLMConfig {
