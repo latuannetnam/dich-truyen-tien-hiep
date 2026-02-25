@@ -183,6 +183,7 @@ class PipelineService:
                 auto_glossary=not job["no_glossary"],
                 force=job["force"],
                 crawl_only=job["crawl_only"],
+                translate_only=job["translate_only"],
             )
 
             # Stop periodic emitter

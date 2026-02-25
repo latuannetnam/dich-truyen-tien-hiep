@@ -145,6 +145,7 @@ def pipeline(
             auto_glossary=not no_glossary,
             force=force,
             crawl_only=crawl_only,
+            translate_only=translate_only,
         )
         
         # Check for errors

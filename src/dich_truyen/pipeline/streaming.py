@@ -128,6 +128,7 @@ class StreamingPipeline:
         auto_glossary: bool = True,
         force: bool = False,
         crawl_only: bool = False,
+        translate_only: bool = False,
     ) -> PipelineResult:
         """Run the streaming pipeline.
         
@@ -188,7 +189,7 @@ class StreamingPipeline:
                     c.status = ChapterStatus.PENDING
             self.progress.save(self.book_dir)
         
-        to_crawl = [c for c in chapters if c.status == ChapterStatus.PENDING]
+        to_crawl = [] if translate_only else [c for c in chapters if c.status == ChapterStatus.PENDING]
         to_translate = [c for c in chapters if c.status == ChapterStatus.CRAWLED]
         already_done = [c for c in chapters if c.status == ChapterStatus.TRANSLATED]
         
@@ -244,7 +245,7 @@ class StreamingPipeline:
         else:
             chapters = all_chapters
         
-        to_crawl = [c for c in chapters if c.status == ChapterStatus.PENDING]
+        to_crawl = [] if translate_only else [c for c in chapters if c.status == ChapterStatus.PENDING]
         to_translate = [c for c in chapters if c.status == ChapterStatus.CRAWLED]
         
         # Handle crawl_only mode - skip translation setup and workers
