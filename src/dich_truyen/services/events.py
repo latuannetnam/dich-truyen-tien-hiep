@@ -1,7 +1,7 @@
 """Event pub/sub system for pipeline progress.
 
 Enables decoupled communication between pipeline execution and display layers:
-- CLI subscribes → Rich console output (future refactor)
+- CLI subscribes → structlog output
 - Web subscribes → WebSocket → React state updates
 """
 

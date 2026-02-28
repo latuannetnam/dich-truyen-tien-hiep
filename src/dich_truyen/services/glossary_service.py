@@ -15,7 +15,7 @@ from dich_truyen.translator.glossary import Glossary, GlossaryEntry
 class GlossaryService:
     """Manage glossary read/write for a book directory.
 
-    Uses quiet loading to avoid Rich console output on every API request.
+    Uses quiet loading to avoid logger noise on every API request.
     """
 
     def __init__(self, books_dir: Path) -> None:
@@ -29,7 +29,7 @@ class GlossaryService:
         return book_dir
 
     def _load_quiet(self, book_dir: Path) -> Glossary:
-        """Load glossary from CSV without Rich console output."""
+        """Load glossary from CSV without log noise."""
         glossary_path = book_dir / "glossary.csv"
         if not glossary_path.exists():
             return Glossary()
