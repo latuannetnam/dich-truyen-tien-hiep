@@ -7,13 +7,13 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
-from rich.console import Console
+import structlog
 
 from dich_truyen.config import LLMConfig
 from dich_truyen.translator.llm import LLMClient
 from dich_truyen.utils.progress import BookPatterns
 
-console = Console()
+logger = structlog.get_logger()
 
 
 class DiscoveredBook(BaseModel):
@@ -140,7 +140,7 @@ class PatternDiscovery:
         
         # Handle None content
         if result_text is None:
-            console.print("[yellow]Warning: LLM returned empty response for index page analysis[/yellow]")
+            logger.warning("llm_empty_response", page="index")
             result_text = "{}"
         
         result_text = result_text.strip()
@@ -148,11 +148,7 @@ class PatternDiscovery:
         # Try to extract JSON from response
         result = self._parse_json_response(result_text)
         
-        # Log extracted patterns
-        console.print("[dim]LLM Index Page Analysis:[/dim]")
-        console.print(f"  [dim]• Chapter selector: {result.get('chapter_selector', 'a')}[/dim]")
-        console.print(f"  [dim]• Encoding: {result.get('encoding', 'utf-8')}[/dim]")
-        console.print(f"  [dim]• Has pagination: {result.get('has_pagination', False)}[/dim]")
+        logger.debug("index_page_analysis", chapter_selector=result.get("chapter_selector", "a"), encoding=result.get("encoding", "utf-8"), has_pagination=result.get("has_pagination", False))
 
         return DiscoveredBook(
             title=result.get("title", "Unknown"),
@@ -182,7 +178,7 @@ class PatternDiscovery:
         truncated_html = str(soup)[:15000]
         
         # Debug: Log HTML size
-        console.print(f"[dim]  HTML size: {len(html)} chars, truncated to {len(truncated_html)} chars[/dim]")
+        logger.debug("chapter_page_html", original_size=len(html), truncated_size=len(truncated_html))
 
         prompt = CHAPTER_PATTERN_PROMPT.format(url=url, html=truncated_html)
 
@@ -201,15 +197,15 @@ class PatternDiscovery:
 
         result_text = response.choices[0].message.content
         
-        # Debug: Log raw response details
-        console.print(f"[dim]  LLM finish_reason: {response.choices[0].finish_reason}[/dim]")
-        console.print(f"[dim]  LLM content is None: {result_text is None}[/dim]")
+        logger.debug("llm_chapter_response", finish_reason=response.choices[0].finish_reason, content_is_none=(result_text is None))
         if result_text:
-            console.print(f"[dim]  LLM response preview: {result_text[:100]}...[/dim]")
+            logger.debug("llm_chapter_preview", preview=result_text[:100])
+        
+
         
         # Handle None content
         if result_text is None:
-            console.print("[yellow]Warning: LLM returned empty response for chapter page analysis[/yellow]")
+            logger.warning("llm_empty_response", page="chapter")
             result_text = "{}"
         
         result_text = result_text.strip()
@@ -220,10 +216,10 @@ class PatternDiscovery:
         content_sel = result.get("content_selector", "#content")
         remove_els = result.get("elements_to_remove", ["script", "style", ".toplink", "table"])
         
-        console.print("[dim]LLM Chapter Page Analysis:[/dim]")
-        console.print(f"  [dim]• Title selector: {title_sel}[/dim]")
-        console.print(f"  [dim]• Content selector: {content_sel}[/dim]")
-        console.print(f"  [dim]• Elements to remove: {remove_els}[/dim]")
+        logger.debug("chapter_page_analysis", title_selector=title_sel, content_selector=content_sel, elements_to_remove=remove_els)
+
+
+
 
         return BookPatterns(
             title_selector=title_sel,
