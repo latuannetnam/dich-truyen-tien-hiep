@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -16,7 +16,7 @@ import {
   FileDown,
   Check,
 } from "lucide-react";
-import { getBook, getExportStatus, startExport, getExportDownloadUrl } from "@/lib/api";
+import { getBook, getExportStatus, startExport, getExportDownloadUrl, getPipelineJobs } from "@/lib/api";
 import type { BookDetail, ExportStatus } from "@/lib/types";
 import ChapterTable from "@/components/book/ChapterTable";
 import ResumeBanner from "@/components/book/ResumeBanner";
@@ -56,6 +56,44 @@ export default function BookDetailPage() {
       }
     }
   }, [bookId]);
+
+  // Poll book data while an active pipeline job is running for this book
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const checkAndPoll = useCallback(() => {
+    getPipelineJobs()
+      .then((jobs) => {
+        const active = jobs.some(
+          (j) =>
+            (j.status === "running" || j.status === "pending") &&
+            j.book_dir?.includes(bookId)
+        );
+        if (active && !intervalRef.current) {
+          intervalRef.current = setInterval(() => {
+            getBook(bookId).then(setBook).catch(() => {});
+          }, 5000);
+        } else if (!active && intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          // Final refresh to get latest state
+          getBook(bookId).then(setBook).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }, [bookId]);
+
+  useEffect(() => {
+    if (!bookId) return;
+    checkAndPoll();
+    const pollCheck = setInterval(checkAndPoll, 10000);
+    return () => {
+      clearInterval(pollCheck);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [bookId, checkAndPoll]);
 
   const handleExport = async () => {
     setExporting(true);
