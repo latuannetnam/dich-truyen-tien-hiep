@@ -1,8 +1,8 @@
 """Glossary API routes — CRUD for book glossaries.
 
 Note: Uses _load_glossary_quiet() instead of Glossary.load_or_create()
-to avoid Glossary.from_csv()'s Rich console.print() spam on every request.
-This ensures the server stdout stays clean while CLI behavior is unchanged.
+to avoid Glossary.from_csv()'s logger.info() on every request.
+This ensures the server log stays clean while CLI behavior is unchanged.
 """
 
 import csv
@@ -36,10 +36,10 @@ def _get_book_dir(book_id: str) -> Path:
 
 
 def _load_glossary_quiet(book_dir: Path) -> Glossary:
-    """Load glossary without Rich console output.
+    """Load glossary without log noise.
 
-    Glossary.from_csv() prints "Imported N entries" to stdout,
-    which is fine for CLI but spams the API server log. This
+    Glossary.from_csv() emits logger.info("glossary_imported"),
+    which is fine for CLI but noisy for the API server. This
     reads the CSV directly and constructs a Glossary silently.
     """
     glossary_path = book_dir / "glossary.csv"
