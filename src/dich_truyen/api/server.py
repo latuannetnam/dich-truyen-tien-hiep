@@ -48,6 +48,7 @@ def create_app(
     event_bus = EventBus()
     pipeline_service = PipelineService(event_bus)
     pipeline.set_services(event_bus, pipeline_service)
+    pipeline.set_books_dir(books_dir or Path("books"))
     app.include_router(pipeline.router)
 
     # Settings service

@@ -174,6 +174,87 @@ def test_get_pipeline_job_not_found(tmp_path):
     assert response.status_code == 404
 
 
+def test_resumable_returns_incomplete_books(tmp_path):
+    """Resumable endpoint returns books with incomplete chapters."""
+    from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
+
+    books_dir = tmp_path / "books"
+    books_dir.mkdir()
+
+    # Create book with mixed statuses (incomplete)
+    book_dir = books_dir / "test-book"
+    book_dir.mkdir()
+
+    progress = BookProgress(
+        url="https://example.com/book",
+        title="Test Book",
+        title_vi="Sách Test",
+        author="Author",
+        author_vi="Tác giả",
+        encoding="utf-8",
+        chapters=[
+            Chapter(index=1, id="ch1", url="https://example.com/1", title_cn="第一章",
+                    status=ChapterStatus.TRANSLATED),
+            Chapter(index=2, id="ch2", url="https://example.com/2", title_cn="第二章",
+                    status=ChapterStatus.CRAWLED),
+            Chapter(index=3, id="ch3", url="https://example.com/3", title_cn="第三章",
+                    status=ChapterStatus.PENDING),
+        ],
+    )
+    progress.save(book_dir)
+
+    # Save pipeline settings
+    settings = {"style": "tien_hiep", "workers": 3, "last_run_at": "2026-02-28T00:00:00"}
+    (book_dir / "last_pipeline_settings.json").write_text(json.dumps(settings))
+
+    app = create_app(books_dir=books_dir)
+    client = TestClient(app)
+    response = client.get("/api/v1/pipeline/resumable")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    book = data[0]
+    assert book["book_id"] == "test-book"
+    assert book["title_vi"] == "Sách Test"
+    assert book["translated"] == 1
+    assert book["crawled"] == 1
+    assert book["pending"] == 1
+    assert book["total_chapters"] == 3
+    assert book["last_settings"]["style"] == "tien_hiep"
+
+
+def test_resumable_excludes_fully_translated(tmp_path):
+    """Fully translated books do not appear in resumable list."""
+    from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
+
+    books_dir = tmp_path / "books"
+    books_dir.mkdir()
+
+    book_dir = books_dir / "done-book"
+    book_dir.mkdir()
+
+    progress = BookProgress(
+        url="https://example.com/done",
+        title="Done Book",
+        title_vi="Sách Hoàn Thành",
+        author="Author",
+        author_vi="Tác giả",
+        encoding="utf-8",
+        chapters=[
+            Chapter(index=1, id="ch1", url="https://example.com/1", title_cn="第一章",
+                    status=ChapterStatus.TRANSLATED),
+        ],
+    )
+    progress.save(book_dir)
+
+    app = create_app(books_dir=books_dir)
+    client = TestClient(app)
+    response = client.get("/api/v1/pipeline/resumable")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 0
+
+
 # --- WebSocket tests ---
 
 
