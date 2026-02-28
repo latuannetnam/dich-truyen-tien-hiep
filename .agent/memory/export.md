@@ -50,15 +50,18 @@ epub_build/
 ```python
 class DirectEPUBAssembler:
     async def assemble(self, book_dir, chapters):
+        # Gather parallel chapter writes (no Rich Progress bar)
         with ThreadPoolExecutor(max_workers=8) as executor:
             tasks = [
                 loop.run_in_executor(executor, self._write_chapter_file, ...)
                 for index, chapter in enumerate(chapters, 1)
             ]
             await asyncio.gather(*tasks)
+        # Sequential: manifest, TOC, static files, ZIP
         self._write_manifest(...)
         self._write_toc(...)
         self._create_epub_zip(...)
+        logger.info("epub_created", path=str(epub_path))
 ```
 
 ## Supported Output Formats

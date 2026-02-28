@@ -82,6 +82,7 @@ The API route (`api/routes/pipeline.py`) rejects `crawl_only + translate_only` w
 | | `services/style_service.py` | Wraps StyleManager for style list/load |
 | | `services/book_service.py` | Wraps BookProgress for book/chapter queries |
 | **CLI** | `cli.py` | All user-facing commands |
+| **Logging** | `log.py` | Central `structlog` config; `configure_logging(verbosity, log_file)` |
 | **Config** | `config.py` | Pydantic settings & env vars |
 | **Progress** | `utils/progress.py` | BookProgress & chapter status |
 | **API** | `api/server.py` | FastAPI app factory with CORS, services init |
@@ -103,6 +104,7 @@ The API route (`api/routes/pipeline.py`) rejects `crawl_only + translate_only` w
 | Goal | Where |
 |------|-------|
 | Pipeline behavior | `pipeline/streaming.py:run()` and `_translate_consumer()` |
+| Pipeline status display | `pipeline/streaming.py:log_status_periodically()` — `logger.info("pipeline_status", ...)` every 5 s |
 | Translation logic | `translator/engine.py:translate_chunk_with_context_marker()` |
 | Glossary generation | `translator/glossary.py:generate_glossary_from_samples()` |
 | CLI commands | `cli.py` with `@cli.command()` |

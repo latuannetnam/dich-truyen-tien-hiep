@@ -54,3 +54,19 @@ if len(content) < 100:
 
 - Specified encoding tried first
 - Falls back to `chardet` auto-detection if content is garbled
+
+## Logging
+
+All Rich console output replaced with `structlog`. Key events:
+
+| Event key | Level | Where |
+|-----------|-------|-------|
+| `analyzing_book` | info | `downloader.py:initialize_book()` |
+| `book_discovered` | info | `downloader.py` — title, author, encoding, chapter count |
+| `download_started` | info | `downloader.py:download_chapters()` |
+| `download_progress` | info | Every 10 chapters |
+| `download_complete` | info | Total downloaded/skipped/failed |
+| `http_error` | warning | `base.py` — non-fatal HTTP errors |
+| `index_page_analysis` | debug | `pattern.py` — LLM-discovered selectors |
+
+`download_chapters()` no longer shows a Rich Progress bar — a periodic `logger.info("download_progress", ...)` fires every 10 chapters.

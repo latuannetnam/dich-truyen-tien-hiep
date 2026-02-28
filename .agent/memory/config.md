@@ -7,6 +7,7 @@ description: Pydantic settings, environment variables, and configuration hierarc
 ## Key File
 
 `config.py` — Pydantic `BaseSettings` classes, loaded from env vars and `.env` file.
+`log.py` — Central `structlog` configuration; called once at CLI startup.
 
 ## Settings Hierarchy
 
@@ -89,3 +90,25 @@ settings = svc.get_settings()   # Returns dict with masked API keys
 svc.update_settings({"llm": {"model": "gpt-4o"}})  # Writes to .env + reloads
 result = svc.test_connection()  # Returns {"success": bool, "message": str}
 ```
+
+## Logging
+
+`src/dich_truyen/log.py` configures `structlog` for the whole app. Called once at startup by `cli.py`.
+
+```python
+from dich_truyen.log import configure_logging
+
+configure_logging(
+    verbosity=0,          # 0=INFO, 1=DEBUG, -1=WARNING
+    log_file=Path("out.log")  # None = stderr only
+)
+```
+
+| `verbosity` | Effective log level |
+|-------------|--------------------|
+| `>= 1` (`--verbose`) | `DEBUG` |
+| `0` (default) | `INFO` |
+| `<= -1` (`--quiet`) | `WARNING` |
+
+**Console output**: human-readable key=value format on stderr.
+**File output**: JSON-L (one JSON object per line) — enabled only when `--log-file` is passed.

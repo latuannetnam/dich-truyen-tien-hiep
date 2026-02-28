@@ -11,7 +11,7 @@ description: CLI commands, options, and how to add new commands
 ## Command Tree
 
 ```
-dich-truyen
+dich-truyen [--verbose] [--quiet] [--log-file PATH]
 ├── pipeline           Main workflow: crawl + translate + (export)
 │   ├── --url          Source novel URL (required for new books)
 │   ├── --book-dir     Existing book directory
@@ -44,6 +44,16 @@ dich-truyen
     ├── --host ADDR    API server host (default: 127.0.0.1)
     └── --no-browser   Don't auto-open browser
 ```
+
+## Global Logging Flags (root group)
+
+| Flag | Purpose |
+|------|---------|
+| `--verbose` | Set log level to DEBUG (very detailed output) |
+| `--quiet` | Set log level to WARNING (suppress info messages) |
+| `--log-file PATH` | Write JSON-structured logs to PATH in addition to stderr |
+
+These flags call `configure_logging()` from `log.py` before any command logic runs.
 
 ## How to Add a New Command
 

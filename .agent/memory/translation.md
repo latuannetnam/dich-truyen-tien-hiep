@@ -104,3 +104,17 @@ USER:
 | `TRANSLATION_PROGRESSIVE_GLOSSARY` | true | Extract new terms during translation |
 | `TRANSLATION_GLOSSARY_SAMPLE_CHAPTERS` | 5 | Chapters to sample for initial glossary |
 | `TRANSLATION_GLOSSARY_SAMPLE_SIZE` | 3000 | Characters per sample chapter |
+
+## Logging
+
+All `console.print()` / Rich output replaced with `structlog`. Key events:
+
+| Event key | Level | Where |
+|-----------|-------|-------|
+| `chapter_translation_start` | info | `engine.py:translate_book()` |
+| `chunk_translation_retry` | warning | `engine.py:translate_chunk_with_context_marker()` |
+| `glossary_generated` | info | `glossary.py:generate_glossary_from_samples()` |
+| `llm_retry` | warning | `llm.py` |
+| `style_loaded` | debug | `style.py` |
+
+`translate_book()` no longer shows a Rich Progress bar — progress is tracked via `logger.info("chapter_translated", ...)` per chapter.
