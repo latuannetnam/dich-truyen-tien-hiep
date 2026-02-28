@@ -92,3 +92,103 @@ def test_save_pipeline_settings_overwrites(tmp_path):
     assert data["style"] == "new_style"
     assert data["workers"] == 5
 
+
+def test_scan_books_creates_default_settings(tmp_path):
+    """Startup scan creates default settings for incomplete books without one."""
+    from dich_truyen.services.pipeline_service import scan_books_on_startup
+    from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
+
+    # Create incomplete book WITHOUT last_pipeline_settings.json
+    book_dir = tmp_path / "incomplete-book"
+    book_dir.mkdir()
+    progress = BookProgress(
+        url="https://example.com",
+        title="Test",
+        title_vi="",
+        author="",
+        author_vi="",
+        encoding="utf-8",
+        chapters=[
+            Chapter(
+                index=1,
+                id="ch1",
+                url="https://example.com/1",
+                title_cn="第一章",
+                status=ChapterStatus.CRAWLED,
+            ),
+        ],
+    )
+    progress.save(book_dir)
+
+    # Create complete book WITHOUT settings (should NOT get a file)
+    done_dir = tmp_path / "done-book"
+    done_dir.mkdir()
+    done_progress = BookProgress(
+        url="https://example.com/done",
+        title="Done",
+        title_vi="",
+        author="",
+        author_vi="",
+        encoding="utf-8",
+        chapters=[
+            Chapter(
+                index=1,
+                id="ch1",
+                url="https://example.com/1",
+                title_cn="第一章",
+                status=ChapterStatus.TRANSLATED,
+            ),
+        ],
+    )
+    done_progress.save(done_dir)
+
+    scan_books_on_startup(tmp_path)
+
+    # Incomplete book should get default settings
+    assert (book_dir / "last_pipeline_settings.json").exists()
+    data = json.loads((book_dir / "last_pipeline_settings.json").read_text(encoding="utf-8"))
+    assert data["style"] == "tien_hiep"
+    assert data["workers"] == 3
+
+    # Complete book should NOT get settings
+    assert not (done_dir / "last_pipeline_settings.json").exists()
+
+
+def test_scan_books_skips_existing_settings(tmp_path):
+    """Startup scan does NOT overwrite existing settings."""
+    from dich_truyen.services.pipeline_service import scan_books_on_startup
+    from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
+
+    book_dir = tmp_path / "book-with-settings"
+    book_dir.mkdir()
+    progress = BookProgress(
+        url="https://example.com",
+        title="Test",
+        title_vi="",
+        author="",
+        author_vi="",
+        encoding="utf-8",
+        chapters=[
+            Chapter(
+                index=1,
+                id="ch1",
+                url="https://example.com/1",
+                title_cn="第一章",
+                status=ChapterStatus.CRAWLED,
+            ),
+        ],
+    )
+    progress.save(book_dir)
+
+    # Pre-existing settings with custom style
+    existing = {"style": "custom_style", "workers": 5, "last_run_at": "2026-01-01T00:00:00"}
+    (book_dir / "last_pipeline_settings.json").write_text(json.dumps(existing))
+
+    scan_books_on_startup(tmp_path)
+
+    # Settings should be unchanged
+    data = json.loads((book_dir / "last_pipeline_settings.json").read_text(encoding="utf-8"))
+    assert data["style"] == "custom_style"
+    assert data["workers"] == 5
+
+

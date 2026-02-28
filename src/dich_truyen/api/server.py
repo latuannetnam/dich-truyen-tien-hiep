@@ -12,7 +12,7 @@ from dich_truyen.api.routes import books, export, glossary, pipeline, settings, 
 from dich_truyen.services.config_service import ConfigService
 from dich_truyen.services.events import EventBus
 from dich_truyen.services.export_service import ExportService
-from dich_truyen.services.pipeline_service import PipelineService
+from dich_truyen.services.pipeline_service import PipelineService, scan_books_on_startup
 from dich_truyen.services.style_service import StyleService
 
 
@@ -39,6 +39,8 @@ def create_app(
     # Configure books directory
     if books_dir:
         books.set_books_dir(books_dir)
+        # Scan books for incomplete pipelines (create default settings for CLI-started books)
+        scan_books_on_startup(books_dir)
 
     app.include_router(books.router)
 

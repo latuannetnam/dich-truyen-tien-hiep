@@ -39,6 +39,49 @@ def _save_pipeline_settings(
     settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
 
+def scan_books_on_startup(books_dir: Path) -> None:
+    """Scan books directory and create default settings for incomplete books.
+
+    Called on app startup to ensure CLI-started books with incomplete
+    chapters also appear in the Web UI's resumable list.
+    Only creates settings for books that don't already have one.
+    """
+    import structlog
+
+    from dich_truyen.utils.progress import BookProgress, ChapterStatus
+
+    logger = structlog.get_logger()
+
+    if not books_dir.exists():
+        return
+
+    for book_dir in sorted(books_dir.iterdir()):
+        book_json = book_dir / "book.json"
+        if not book_json.exists():
+            continue
+
+        # Skip if settings already exist
+        settings_file = book_dir / "last_pipeline_settings.json"
+        if settings_file.exists():
+            continue
+
+        progress = BookProgress.load(book_dir)
+        if progress is None:
+            continue
+
+        # Check if book has incomplete chapters
+        has_incomplete = any(
+            ch.status in (ChapterStatus.PENDING, ChapterStatus.CRAWLED, ChapterStatus.ERROR)
+            for ch in progress.chapters
+        )
+        if not has_incomplete:
+            continue
+
+        # Create default settings
+        logger.info("creating_default_pipeline_settings", book=book_dir.name)
+        _save_pipeline_settings(book_dir=book_dir)
+
+
 
 class JobStatus(StrEnum):
     """Pipeline job status."""
