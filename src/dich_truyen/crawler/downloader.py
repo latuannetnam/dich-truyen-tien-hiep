@@ -5,8 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel
-from rich.console import Console
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
+import structlog
 
 from dich_truyen.config import CrawlerConfig, get_config
 from dich_truyen.crawler.base import BaseCrawler
@@ -19,7 +18,7 @@ from dich_truyen.utils.progress import (
     parse_chapter_range,
 )
 
-console = Console()
+logger = structlog.get_logger()
 
 
 class DownloadResult(BaseModel):
@@ -84,11 +83,10 @@ class ChapterDownloader:
 
         # If already initialized with chapters, return existing
         if progress.chapters:
-            console.print(f"[green]Loaded existing book: {progress.title}[/green]")
-            console.print(f"  Chapters: {len(progress.chapters)}")
+            logger.info("book_loaded", title=progress.title, chapters=len(progress.chapters))
             return progress
 
-        console.print(f"[blue]Analyzing book URL: {url}[/blue]")
+        logger.info("analyzing_book", url=url)
 
         # Fetch the index page
         async with BaseCrawler(self.config) as crawler:
@@ -105,20 +103,22 @@ class ChapterDownloader:
         discovery = PatternDiscovery()
         discovered = await discovery.analyze_index_page(html, url)
 
-        console.print(f"[green]Discovered book: {discovered.title}[/green]")
-        console.print(f"  Author: {discovered.author}")
-        console.print(f"  Encoding: {encoding or discovered.encoding}")
-
         # Extract chapters using discovered pattern
         chapters = discovery.extract_chapters_from_html(
             html, url, discovered.patterns.chapter_selector
         )
 
-        console.print(f"  Found {len(chapters)} chapters")
+        logger.info(
+            "book_discovered",
+            title=discovered.title,
+            author=discovered.author,
+            encoding=encoding or discovered.encoding,
+            chapters=len(chapters),
+        )
 
         # Analyze chapter page structure
         if chapters:
-            console.print("[blue]Analyzing chapter page structure...[/blue]")
+            logger.debug("analyzing_chapter_page")
             async with BaseCrawler(self.config) as crawler:
                 chapter_html = await crawler.fetch(chapters[0].url, encoding)
                 content_patterns = await discovery.analyze_chapter_page(chapter_html, chapters[0].url)
@@ -128,11 +128,12 @@ class ChapterDownloader:
             discovered.patterns.content_selector = content_patterns.content_selector
             discovered.patterns.elements_to_remove = content_patterns.elements_to_remove
         
-        # Log final patterns being used
-        console.print("[dim]Final patterns for content extraction:[/dim]")
-        console.print(f"  [dim]• Title: {discovered.patterns.title_selector}[/dim]")
-        console.print(f"  [dim]• Content: {discovered.patterns.content_selector}[/dim]")
-        console.print(f"  [dim]• Remove: {discovered.patterns.elements_to_remove}[/dim]")
+        logger.debug(
+            "patterns_finalized",
+            title_selector=discovered.patterns.title_selector,
+            content_selector=discovered.patterns.content_selector,
+            elements_to_remove=discovered.patterns.elements_to_remove,
+        )
 
         # Update progress
         progress.title = discovered.title
@@ -152,7 +153,7 @@ class ChapterDownloader:
 
         # Save progress
         progress.save(self.book_dir)
-        console.print(f"[green]Book initialized: {self.book_dir}[/green]")
+        logger.info("book_initialized", path=str(self.book_dir))
 
         return progress
 
@@ -195,7 +196,7 @@ class ChapterDownloader:
             skipped = 0
 
         if not chapters_to_download:
-            console.print("[green]All chapters already downloaded![/green]")
+            logger.info("all_chapters_downloaded")
             return DownloadResult(
                 total=len(chapters_to_process),
                 downloaded=0,
@@ -203,15 +204,13 @@ class ChapterDownloader:
                 failed=0,
             )
 
-        console.print(f"[blue]Downloading {len(chapters_to_download)} chapters...[/blue]")
-        if skipped > 0:
-            console.print(f"  Skipping {skipped} already downloaded")
-        
-        # Log patterns being used
-        console.print("[dim]Using extraction patterns:[/dim]")
-        console.print(f"  [dim]• Title selector: {progress.patterns.title_selector}[/dim]")
-        console.print(f"  [dim]• Content selector: {progress.patterns.content_selector}[/dim]")
-        console.print(f"  [dim]• Elements to remove: {progress.patterns.elements_to_remove}[/dim]")
+        logger.info("download_started", chapters=len(chapters_to_download), skipped=skipped)
+        logger.debug(
+            "extraction_patterns",
+            title_selector=progress.patterns.title_selector,
+            content_selector=progress.patterns.content_selector,
+            elements_to_remove=progress.patterns.elements_to_remove,
+        )
 
         # Create extraction discovery
         discovery = PatternDiscovery()
@@ -223,66 +222,61 @@ class ChapterDownloader:
             failed=0,
         )
 
-        # Download with progress bar
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console,
-        ) as pbar:
-            task = pbar.add_task("Downloading", total=len(chapters_to_download))
+        # Download chapters with simple loop + periodic logging
+        async with BaseCrawler(self.config) as crawler:
+            for i, chapter in enumerate(chapters_to_download, 1):
+                logger.debug("downloading_chapter", chapter=chapter.index, title=(chapter.title_cn or "")[:20])
 
-            async with BaseCrawler(self.config) as crawler:
-                for chapter in chapters_to_download:
-                    pbar.update(task, description=f"Ch.{chapter.index}: {chapter.title_cn[:20]}...")
+                try:
+                    # Fetch chapter page
+                    html = await crawler.fetch(chapter.url, progress.encoding)
 
-                    try:
-                        # Fetch chapter page
-                        html = await crawler.fetch(chapter.url, progress.encoding)
+                    # Extract content
+                    title, content = discovery.extract_chapter_content(html, progress.patterns)
 
-                        # Extract content
-                        title, content = discovery.extract_chapter_content(html, progress.patterns)
+                    # Update title if extracted
+                    if title and not chapter.title_cn:
+                        chapter.title_cn = title
 
-                        # Update title if extracted
-                        if title and not chapter.title_cn:
-                            chapter.title_cn = title
+                    # Save to file
+                    filename = f"{chapter.index:04d}_{slugify(chapter.title_cn)}.txt"
+                    filepath = self.raw_dir / filename
 
-                        # Save to file
-                        filename = f"{chapter.index:04d}_{slugify(chapter.title_cn)}.txt"
-                        filepath = self.raw_dir / filename
+                    with open(filepath, "w", encoding="utf-8") as f:
+                        f.write(f"# {chapter.title_cn}\n\n")
+                        f.write(content)
 
-                        with open(filepath, "w", encoding="utf-8") as f:
-                            f.write(f"# {chapter.title_cn}\n\n")
-                            f.write(content)
+                    # Update status
+                    progress.update_chapter_status(chapter.index, ChapterStatus.CRAWLED)
+                    result.downloaded += 1
 
-                        # Update status
-                        progress.update_chapter_status(chapter.index, ChapterStatus.CRAWLED)
-                        result.downloaded += 1
+                except Exception as e:
+                    error_msg = f"Chapter {chapter.index}: {str(e)}"
+                    result.errors.append(error_msg)
+                    result.failed += 1
+                    progress.update_chapter_status(
+                        chapter.index, ChapterStatus.ERROR, str(e)
+                    )
+                    logger.error("download_error", chapter=chapter.index, error=str(e))
 
-                    except Exception as e:
-                        error_msg = f"Chapter {chapter.index}: {str(e)}"
-                        result.errors.append(error_msg)
-                        result.failed += 1
-                        progress.update_chapter_status(
-                            chapter.index, ChapterStatus.ERROR, str(e)
-                        )
-                        console.print(f"[red]Error: {error_msg}[/red]")
+                # Save progress after each chapter to prevent data loss
+                progress.save(self.book_dir)
 
-                    # Save progress after each chapter to prevent data loss
-                    progress.save(self.book_dir)
+                # Rate limiting
+                await crawler.delay()
 
-                    # Rate limiting
-                    await crawler.delay()
-                    pbar.advance(task)
+                if i % 10 == 0:
+                    logger.info("download_progress", completed=i, total=len(chapters_to_download))
 
         # Final save
         progress.save(self.book_dir)
 
-        console.print(f"\n[green]Download complete![/green]")
-        console.print(f"  Downloaded: {result.downloaded}")
-        console.print(f"  Skipped: {result.skipped}")
-        console.print(f"  Failed: {result.failed}")
+        logger.info(
+            "download_complete",
+            downloaded=result.downloaded,
+            skipped=result.skipped,
+            failed=result.failed,
+        )
 
         return result
 
