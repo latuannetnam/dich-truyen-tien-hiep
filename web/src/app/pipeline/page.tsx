@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Activity, ChevronRight, PlusCircle, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { getPipelineJobs } from "@/lib/api";
 import type { PipelineJob } from "@/lib/types";
+import ResumableSection from "@/components/pipeline/ResumableSection";
 
 function statusBadge(status: PipelineJob["status"]) {
   const map: Record<string, { icon: typeof Activity; color: string; label: string }> = {
@@ -76,6 +77,8 @@ export default function PipelineListPage() {
           New Translation
         </Link>
       </div>
+
+      <ResumableSection />
 
       {loading ? (
         <div className="space-y-4">
