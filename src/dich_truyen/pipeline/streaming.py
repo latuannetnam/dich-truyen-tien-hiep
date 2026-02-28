@@ -193,7 +193,10 @@ class StreamingPipeline:
             self.progress.save(self.book_dir)
         
         to_crawl = [] if translate_only else [c for c in chapters if c.status == ChapterStatus.PENDING]
-        to_translate = [c for c in chapters if c.status == ChapterStatus.CRAWLED]
+        to_translate = [
+            c for c in chapters
+            if c.status in (ChapterStatus.CRAWLED, ChapterStatus.ERROR)
+        ]
         already_done = [c for c in chapters if c.status == ChapterStatus.TRANSLATED]
         
         # Log LLM configuration summary
@@ -251,7 +254,10 @@ class StreamingPipeline:
             chapters = all_chapters
         
         to_crawl = [] if translate_only else [c for c in chapters if c.status == ChapterStatus.PENDING]
-        to_translate = [c for c in chapters if c.status == ChapterStatus.CRAWLED]
+        to_translate = [
+            c for c in chapters
+            if c.status in (ChapterStatus.CRAWLED, ChapterStatus.ERROR)
+        ]
         
         # Handle crawl_only mode - skip translation setup and workers
         if crawl_only:
