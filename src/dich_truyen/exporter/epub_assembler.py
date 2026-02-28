@@ -13,13 +13,12 @@ from pathlib import Path
 from typing import Optional
 from xml.sax.saxutils import escape
 
-from rich.console import Console
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
+import structlog
 
 from dich_truyen.config import ExportConfig, get_config
 from dich_truyen.utils.progress import BookProgress, Chapter
 
-console = Console()
+logger = structlog.get_logger()
 
 
 # EPUB templates
@@ -131,71 +130,58 @@ class DirectEPUBAssembler:
         if not translated_chapters:
             raise ValueError(f"No translated chapters found in {translated_dir}")
         
-        console.print(f"[blue]Assembling EPUB with {len(translated_chapters)} chapters...[/blue]")
-        
-        # Progress bar for chapter writing
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[{task.completed}/{task.total}]"),
-            TaskProgressColumn(),
-        ) as prog:
-            task = prog.add_task("Writing chapters...", total=len(translated_chapters))
-            
-            # Parallel chapter file writing
-            completed = 0
-            lock = asyncio.Lock()
+        logger.info("assembling_epub", chapters=len(translated_chapters))
+
+        # Parallel chapter file writing
+        completed = 0
+        lock = asyncio.Lock()
+        loop = asyncio.get_event_loop()
+
+        async def write_with_progress(index: int, chapter: Chapter, content: str):
+            nonlocal completed
+            await loop.run_in_executor(
+                None,
+                self._write_chapter_file,
+                chapters_dir,
+                index,
+                chapter,
+                content,
+            )
+            async with lock:
+                completed += 1
+
+        # Create tasks for parallel execution
+        with ThreadPoolExecutor(max_workers=self.config.parallel_workers) as executor:
             loop = asyncio.get_event_loop()
-            
-            async def write_with_progress(index: int, chapter: Chapter, content: str):
-                nonlocal completed
-                await loop.run_in_executor(
-                    None,
-                    self._write_chapter_file,
-                    chapters_dir,
-                    index,
-                    chapter,
-                    content,
-                )
-                async with lock:
-                    completed += 1
-                    prog.update(task, completed=completed)
-            
-            # Create tasks for parallel execution
-            with ThreadPoolExecutor(max_workers=self.config.parallel_workers) as executor:
-                loop = asyncio.get_event_loop()
-                tasks = []
-                
-                for i, (chapter, content) in enumerate(translated_chapters, 1):
-                    tasks.append(write_with_progress(i, chapter, content))
-                
-                await asyncio.gather(*tasks)
-            
-            # Generate manifest
-            prog.update(task, description="Generating manifest...")
-            chapters_only = [ch for ch, _ in translated_chapters]
-            self._write_manifest(oebps_dir, progress, chapters_only)
-            
-            # Generate TOC
-            prog.update(task, description="Generating TOC...")
-            self._write_toc(oebps_dir, progress, chapters_only)
-            
-            # Write static files
-            prog.update(task, description="Writing static files...")
-            self._write_container(meta_inf_dir)
-            self._write_styles(oebps_dir)
-            self._write_title_page(oebps_dir, progress)
-            
-            # Create ZIP
-            prog.update(task, description="Creating EPUB archive...")
-            output_dir = book_dir / "output"
-            output_dir.mkdir(parents=True, exist_ok=True)
-            epub_path = output_dir / "book.epub"
-            
-            self._create_epub_zip(epub_work_dir, epub_path)
-        
-        console.print(f"[green]✓ Created {epub_path}[/green]")
+            tasks = []
+
+            for i, (chapter, content) in enumerate(translated_chapters, 1):
+                tasks.append(write_with_progress(i, chapter, content))
+
+            await asyncio.gather(*tasks)
+
+        logger.debug("epub_chapters_written", count=len(translated_chapters))
+
+        # Generate manifest
+        chapters_only = [ch for ch, _ in translated_chapters]
+        self._write_manifest(oebps_dir, progress, chapters_only)
+
+        # Generate TOC
+        self._write_toc(oebps_dir, progress, chapters_only)
+
+        # Write static files
+        self._write_container(meta_inf_dir)
+        self._write_styles(oebps_dir)
+        self._write_title_page(oebps_dir, progress)
+
+        # Create ZIP
+        output_dir = book_dir / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        epub_path = output_dir / "book.epub"
+
+        self._create_epub_zip(epub_work_dir, epub_path)
+
+        logger.info("epub_created", path=str(epub_path))
         return epub_path
 
     def _get_translated_chapters(

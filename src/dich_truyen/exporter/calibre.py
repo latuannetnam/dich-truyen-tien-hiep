@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel
-from rich.console import Console
+import structlog
 
 from dich_truyen.config import CalibreConfig, get_config
 from dich_truyen.formatter.metadata import BookMetadataManager
 from dich_truyen.utils.progress import BookProgress
 
-console = Console()
+logger = structlog.get_logger()
 
 
 class ExportResult(BaseModel):
@@ -164,7 +164,7 @@ class CalibreExporter:
         except FileNotFoundError as e:
             return ExportResult(success=False, error_message=str(e))
 
-        console.print(f"[blue]Exporting to {output_format.upper()}...[/blue]")
+        logger.info("exporting", format=output_format.upper())
 
         # Run ebook-convert
         try:
@@ -178,11 +178,11 @@ class CalibreExporter:
             )
 
             if result.returncode == 0:
-                console.print(f"[green]Export successful: {output_path}[/green]")
+                logger.info("export_success", path=str(output_path))
                 return ExportResult(success=True, output_path=str(output_path))
             else:
                 error_msg = result.stderr or result.stdout or "Unknown error"
-                console.print(f"[red]Export failed: {error_msg}[/red]")
+                logger.error("export_failed", error=error_msg)
                 return ExportResult(success=False, error_message=error_msg)
 
         except subprocess.TimeoutExpired:
@@ -225,7 +225,7 @@ async def export_book(
         return ExportResult(success=True, output_path=str(epub_path))
     
     # Step 3: Convert EPUB to target format using Calibre
-    console.print(f"[blue]Converting EPUB to {output_format.upper()}...[/blue]")
+    logger.info("converting_format", format=output_format.upper())
     
     exporter = CalibreExporter()
     
