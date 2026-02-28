@@ -3,11 +3,11 @@
 import asyncio
 from typing import Literal, Optional
 
-from rich.console import Console
+import structlog
 
 from dich_truyen.config import LLMConfig, get_config, get_effective_llm_config
 
-console = Console()
+logger = structlog.get_logger()
 
 # Task types for LLM client configuration
 TaskType = Literal["crawl", "glossary", "translate", "default"]
@@ -57,13 +57,14 @@ class LLMClient:
             return get_effective_llm_config(app_config.translator_llm, fallback, "Translator")
         else:
             # Default task - log direct usage
-            console.print(f"[blue]  Default LLM Config:[/blue]")
-            console.print(f"[blue]    • Model: {fallback.model}[/blue]")
-            masked = fallback.api_key[:8] + "..." if len(fallback.api_key) > 8 else "***"
-            console.print(f"[blue]    • API Key: {masked}[/blue]")
-            console.print(f"[blue]    • Base URL: {fallback.base_url}[/blue]")
-            console.print(f"[blue]    • Max Tokens: {fallback.max_tokens}[/blue]")
-            console.print(f"[blue]    • Temperature: {fallback.temperature}[/blue]")
+            logger.debug(
+                "llm_config_default",
+                model=fallback.model,
+                api_key=fallback.api_key[:8] + "..." if len(fallback.api_key) > 8 else "***",
+                base_url=fallback.base_url,
+                max_tokens=fallback.max_tokens,
+                temperature=fallback.temperature,
+            )
             return fallback
 
     @property
@@ -117,7 +118,7 @@ class LLMClient:
                 last_error = e
                 if attempt < max_retries:
                     delay = (2**attempt) * 1  # Exponential backoff: 1, 2, 4 seconds
-                    console.print(f"[yellow]LLM attempt {attempt + 1} failed: {e}[/yellow]")
+                    logger.warning("llm_retry", attempt=attempt + 1, error=str(e))
                     await asyncio.sleep(delay)
 
         raise last_error or RuntimeError("LLM request failed")
@@ -334,5 +335,5 @@ async def test_llm_connection(
         )
         return len(response) > 0
     except Exception as e:
-        console.print(f"[red]LLM connection failed: {e}[/red]")
+        logger.error("llm_connection_failed", error=str(e))
         return False
