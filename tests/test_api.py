@@ -28,23 +28,46 @@ def books_dir(tmp_path):
     """Create a temporary books directory with test data."""
     book1 = tmp_path / "test-book-1"
     book1.mkdir()
-    (book1 / "book.json").write_text(json.dumps({
-        "url": "https://example.com/book1",
-        "title": "测试书籍",
-        "title_vi": "Sách Thử Nghiệm",
-        "author": "作者",
-        "author_vi": "Tác Giả",
-        "encoding": "utf-8",
-        "patterns": {},
-        "chapters": [
-            {"index": 1, "id": "ch1", "title_cn": "第一章", "url": "https://example.com/ch1", "status": "translated"},
-            {"index": 2, "id": "ch2", "title_cn": "第二章", "url": "https://example.com/ch2", "status": "crawled"},
-            {"index": 3, "id": "ch3", "title_cn": "第三章", "url": "https://example.com/ch3", "status": "pending"},
-        ],
-        "metadata": {},
-        "created_at": "2026-01-01T00:00:00",
-        "updated_at": "2026-01-01T00:00:00",
-    }), encoding="utf-8")
+    (book1 / "book.json").write_text(
+        json.dumps(
+            {
+                "url": "https://example.com/book1",
+                "title": "测试书籍",
+                "title_vi": "Sách Thử Nghiệm",
+                "author": "作者",
+                "author_vi": "Tác Giả",
+                "encoding": "utf-8",
+                "patterns": {},
+                "chapters": [
+                    {
+                        "index": 1,
+                        "id": "ch1",
+                        "title_cn": "第一章",
+                        "url": "https://example.com/ch1",
+                        "status": "translated",
+                    },
+                    {
+                        "index": 2,
+                        "id": "ch2",
+                        "title_cn": "第二章",
+                        "url": "https://example.com/ch2",
+                        "status": "crawled",
+                    },
+                    {
+                        "index": 3,
+                        "id": "ch3",
+                        "title_cn": "第三章",
+                        "url": "https://example.com/ch3",
+                        "status": "pending",
+                    },
+                ],
+                "metadata": {},
+                "created_at": "2026-01-01T00:00:00",
+                "updated_at": "2026-01-01T00:00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
     return tmp_path
 
 
@@ -145,10 +168,13 @@ def test_start_pipeline_creates_job(tmp_path):
     """POST /pipeline/start with url creates a job."""
     app = create_app(books_dir=tmp_path)
     client = TestClient(app)
-    response = client.post("/api/v1/pipeline/start", json={
-        "url": "https://example.com/book",
-        "style": "tien_hiep",
-    })
+    response = client.post(
+        "/api/v1/pipeline/start",
+        json={
+            "url": "https://example.com/book",
+            "style": "tien_hiep",
+        },
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "running"
@@ -193,12 +219,27 @@ def test_resumable_returns_incomplete_books(tmp_path):
         author_vi="Tác giả",
         encoding="utf-8",
         chapters=[
-            Chapter(index=1, id="ch1", url="https://example.com/1", title_cn="第一章",
-                    status=ChapterStatus.TRANSLATED),
-            Chapter(index=2, id="ch2", url="https://example.com/2", title_cn="第二章",
-                    status=ChapterStatus.CRAWLED),
-            Chapter(index=3, id="ch3", url="https://example.com/3", title_cn="第三章",
-                    status=ChapterStatus.PENDING),
+            Chapter(
+                index=1,
+                id="ch1",
+                url="https://example.com/1",
+                title_cn="第一章",
+                status=ChapterStatus.TRANSLATED,
+            ),
+            Chapter(
+                index=2,
+                id="ch2",
+                url="https://example.com/2",
+                title_cn="第二章",
+                status=ChapterStatus.CRAWLED,
+            ),
+            Chapter(
+                index=3,
+                id="ch3",
+                url="https://example.com/3",
+                title_cn="第三章",
+                status=ChapterStatus.PENDING,
+            ),
         ],
     )
     progress.save(book_dir)
@@ -241,8 +282,13 @@ def test_resumable_excludes_fully_translated(tmp_path):
         author_vi="Tác giả",
         encoding="utf-8",
         chapters=[
-            Chapter(index=1, id="ch1", url="https://example.com/1", title_cn="第一章",
-                    status=ChapterStatus.TRANSLATED),
+            Chapter(
+                index=1,
+                id="ch1",
+                url="https://example.com/1",
+                title_cn="第一章",
+                status=ChapterStatus.TRANSLATED,
+            ),
         ],
     )
     progress.save(book_dir)
@@ -298,9 +344,12 @@ def test_update_settings(tmp_path):
     env_file.write_text("", encoding="utf-8")
     app = create_app(books_dir=tmp_path, env_file=env_file)
     client = TestClient(app)
-    response = client.put("/api/v1/settings", json={
-        "llm": {"model": "gpt-4o-mini"},
-    })
+    response = client.put(
+        "/api/v1/settings",
+        json={
+            "llm": {"model": "gpt-4o-mini"},
+        },
+    )
     assert response.status_code == 200
     # Verify updated
     response = client.get("/api/v1/settings")
@@ -315,7 +364,8 @@ def test_test_connection_no_key(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     env_file = tmp_path / ".env"
     env_file.write_text("", encoding="utf-8")
-    from dich_truyen.config import set_config, AppConfig
+    from dich_truyen.config import AppConfig, set_config
+
     set_config(AppConfig.load(env_file=env_file))
     app = create_app(books_dir=tmp_path, env_file=env_file)
     client = TestClient(app)
@@ -358,9 +408,14 @@ def test_add_glossary_entry(books_dir_with_glossary):
     """POST /books/:id/glossary adds a new entry."""
     app = create_app(books_dir=books_dir_with_glossary)
     client = TestClient(app)
-    response = client.post("/api/v1/books/test-book-1/glossary", json={
-        "chinese": "筑基", "vietnamese": "Trúc Cơ", "category": "realm",
-    })
+    response = client.post(
+        "/api/v1/books/test-book-1/glossary",
+        json={
+            "chinese": "筑基",
+            "vietnamese": "Trúc Cơ",
+            "category": "realm",
+        },
+    )
     assert response.status_code == 200
     # Verify it was added
     response = client.get("/api/v1/books/test-book-1/glossary")

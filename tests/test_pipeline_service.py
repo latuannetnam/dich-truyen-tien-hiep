@@ -2,10 +2,8 @@
 
 import json
 
-import pytest
-
 from dich_truyen.services.events import EventBus
-from dich_truyen.services.pipeline_service import PipelineService, JobStatus
+from dich_truyen.services.pipeline_service import JobStatus, PipelineService
 
 
 def test_create_pipeline_service():
@@ -190,5 +188,3 @@ def test_scan_books_skips_existing_settings(tmp_path):
     data = json.loads((book_dir / "last_pipeline_settings.json").read_text(encoding="utf-8"))
     assert data["style"] == "custom_style"
     assert data["workers"] == 5
-
-
