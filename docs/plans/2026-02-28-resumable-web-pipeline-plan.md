@@ -4,7 +4,7 @@
 
 **Goal:** Allow the Web UI to detect books with incomplete translations and resume them after app restart — matching the CLI's resume behavior.
 
-**Architecture:** Add a `last_pipeline_settings.json` file per book dir (saved when pipeline runs). Add a `GET /api/v1/pipeline/resumable` endpoint that scans `books/` for incomplete books. Frontend shows a "Resumable Books" section on the pipeline page and a contextual banner on the book detail page. Resume action uses the existing `POST /api/v1/pipeline/start` endpoint.
+**Architecture:** Add a `last_pipeline_settings.json` file per book dir (saved when pipeline runs). On app startup, scan `books/` and create default settings for any incomplete books missing this file (so CLI-started books also show up). Add a `GET /api/v1/pipeline/resumable` endpoint that scans `books/` for incomplete books. Frontend shows a "Resumable Books" section on the pipeline page and a contextual banner on the book detail page. Resume action uses the existing `POST /api/v1/pipeline/start` endpoint.
 
 **Tech Stack:** Python/FastAPI (backend), Next.js/React/TypeScript (frontend), pytest (tests)
 
@@ -126,7 +126,179 @@ git commit -m "feat: save last_pipeline_settings.json on pipeline run"
 
 ---
 
-## Task 2: Add `GET /api/v1/pipeline/resumable` endpoint
+## Task 2: Scan books on app startup
+
+**Files:**
+- Modify: `src/dich_truyen/api/server.py`
+- Reuse: `_save_pipeline_settings` from Task 1
+- Test: `tests/test_pipeline_service.py`
+
+**Why:** Books started via CLI don't have `last_pipeline_settings.json`. On app startup, scan `books/` and create a default settings file for any incomplete book missing one. This ensures CLI-started books also appear in the Web UI with sensible defaults pre-filled.
+
+**Step 1: Write the failing test**
+
+Add to `tests/test_pipeline_service.py`:
+
+```python
+def test_scan_books_creates_default_settings(tmp_path):
+    """Startup scan creates default settings for incomplete books without one."""
+    from dich_truyen.services.pipeline_service import scan_books_on_startup
+    from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
+
+    # Create incomplete book WITHOUT last_pipeline_settings.json
+    book_dir = tmp_path / "incomplete-book"
+    book_dir.mkdir()
+    progress = BookProgress(
+        url="https://example.com",
+        title="Test",
+        title_vi="",
+        author="",
+        author_vi="",
+        encoding="utf-8",
+        chapters=[
+            Chapter(index=1, id="ch1", url="https://example.com/1", title_cn="第一章", status=ChapterStatus.CRAWLED),
+        ],
+    )
+    progress.save(book_dir)
+
+    # Create complete book WITHOUT settings (should NOT get a file)
+    done_dir = tmp_path / "done-book"
+    done_dir.mkdir()
+    done_progress = BookProgress(
+        url="https://example.com/done",
+        title="Done",
+        title_vi="",
+        author="",
+        author_vi="",
+        encoding="utf-8",
+        chapters=[
+            Chapter(index=1, id="ch1", url="https://example.com/1", title_cn="第一章", status=ChapterStatus.TRANSLATED),
+        ],
+    )
+    done_progress.save(done_dir)
+
+    scan_books_on_startup(tmp_path)
+
+    # Incomplete book should get default settings
+    assert (book_dir / "last_pipeline_settings.json").exists()
+    data = json.loads((book_dir / "last_pipeline_settings.json").read_text(encoding="utf-8"))
+    assert data["style"] == "tien_hiep"
+    assert data["workers"] == 3
+
+    # Complete book should NOT get settings
+    assert not (done_dir / "last_pipeline_settings.json").exists()
+
+
+def test_scan_books_skips_existing_settings(tmp_path):
+    """Startup scan does NOT overwrite existing settings."""
+    from dich_truyen.services.pipeline_service import scan_books_on_startup
+    from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
+
+    book_dir = tmp_path / "book-with-settings"
+    book_dir.mkdir()
+    progress = BookProgress(
+        url="https://example.com",
+        title="Test",
+        title_vi="",
+        author="",
+        author_vi="",
+        encoding="utf-8",
+        chapters=[
+            Chapter(index=1, id="ch1", url="https://example.com/1", title_cn="第一章", status=ChapterStatus.CRAWLED),
+        ],
+    )
+    progress.save(book_dir)
+
+    # Pre-existing settings with custom style
+    existing = {"style": "custom_style", "workers": 5, "last_run_at": "2026-01-01T00:00:00"}
+    (book_dir / "last_pipeline_settings.json").write_text(json.dumps(existing))
+
+    scan_books_on_startup(tmp_path)
+
+    # Settings should be unchanged
+    data = json.loads((book_dir / "last_pipeline_settings.json").read_text(encoding="utf-8"))
+    assert data["style"] == "custom_style"
+    assert data["workers"] == 5
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `uv run pytest tests/test_pipeline_service.py::test_scan_books_creates_default_settings tests/test_pipeline_service.py::test_scan_books_skips_existing_settings -v`
+Expected: FAIL with `ImportError` (`scan_books_on_startup` doesn't exist)
+
+**Step 3: Write minimal implementation**
+
+Add to `src/dich_truyen/services/pipeline_service.py`:
+
+```python
+import structlog
+
+logger = structlog.get_logger()
+
+def scan_books_on_startup(books_dir: Path) -> None:
+    """Scan books directory and create default settings for incomplete books.
+
+    Called on app startup to ensure CLI-started books with incomplete
+    chapters also appear in the Web UI's resumable list.
+    Only creates settings for books that don't already have one.
+    """
+    from dich_truyen.utils.progress import BookProgress, ChapterStatus
+
+    if not books_dir.exists():
+        return
+
+    for book_dir in sorted(books_dir.iterdir()):
+        book_json = book_dir / "book.json"
+        if not book_json.exists():
+            continue
+
+        # Skip if settings already exist
+        settings_file = book_dir / "last_pipeline_settings.json"
+        if settings_file.exists():
+            continue
+
+        progress = BookProgress.load(book_dir)
+        if progress is None:
+            continue
+
+        # Check if book has incomplete chapters
+        has_incomplete = any(
+            ch.status in (ChapterStatus.PENDING, ChapterStatus.CRAWLED, ChapterStatus.ERROR)
+            for ch in progress.chapters
+        )
+        if not has_incomplete:
+            continue
+
+        # Create default settings
+        logger.info("creating_default_pipeline_settings", book=book_dir.name)
+        _save_pipeline_settings(book_dir=book_dir)
+```
+
+Then call `scan_books_on_startup()` in `src/dich_truyen/api/server.py` inside `create_app()`, after setting `books_dir`:
+
+```python
+from dich_truyen.services.pipeline_service import scan_books_on_startup
+
+# Scan books for incomplete pipelines (create default settings for CLI-started books)
+if books_dir:
+    scan_books_on_startup(books_dir)
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `uv run pytest tests/test_pipeline_service.py -v`
+Expected: ALL PASS
+
+**Step 5: Commit**
+
+```bash
+git add src/dich_truyen/services/pipeline_service.py src/dich_truyen/api/server.py tests/test_pipeline_service.py
+git commit -m "feat: scan books on startup and create default pipeline settings"
+```
+
+---
+
+## Task 3: Add `GET /api/v1/pipeline/resumable` endpoint
 
 **Files:**
 - Modify: `src/dich_truyen/api/routes/pipeline.py`
@@ -330,7 +502,7 @@ git commit -m "feat: add GET /api/v1/pipeline/resumable endpoint"
 
 ---
 
-## Task 3: Add `getResumableBooks()` to frontend API client + types
+## Task 4: Add `getResumableBooks()` to frontend API client + types
 
 **Files:**
 - Modify: `web/src/lib/types.ts`
@@ -378,7 +550,7 @@ git commit -m "feat: add ResumableBook type and getResumableBooks API function"
 
 ---
 
-## Task 4: Add "Resumable Books" section to Pipeline page
+## Task 5: Add "Resumable Books" section to Pipeline page
 
 **Files:**
 - Create: `web/src/components/pipeline/ResumableSection.tsx`
@@ -423,7 +595,7 @@ git commit -m "feat: add Resumable Books section to pipeline page"
 
 ---
 
-## Task 5: Add resume banner to Book Detail page
+## Task 6: Add resume banner to Book Detail page
 
 **Files:**
 - Create: `web/src/components/library/ResumeBanner.tsx`
@@ -463,7 +635,7 @@ git commit -m "feat: add resume banner to book detail page"
 
 ---
 
-## Task 6: Final verification and cleanup
+## Task 7: Final verification and cleanup
 
 **Step 1: Run all backend tests**
 
@@ -507,11 +679,11 @@ git commit -m "feat: final polish for resumable web pipeline"
 
 | Command | What it tests |
 |---------|---------------|
-| `uv run pytest tests/test_pipeline_service.py -v` | `_save_pipeline_settings()` saves/overwrites JSON correctly |
+| `uv run pytest tests/test_pipeline_service.py -v` | `_save_pipeline_settings()` + `scan_books_on_startup()` |
 | `uv run pytest tests/test_api.py -v -k resumable` | `/resumable` endpoint returns incomplete books, excludes done books |
 | `uv run pytest tests/ -v` | Full regression — no existing tests broken |
 | `uv run ruff check .` | No lint errors |
 
 ### Manual Verification
 
-Full end-to-end test as described in Task 6, Step 3.
+Full end-to-end test as described in Task 7, Step 3.
