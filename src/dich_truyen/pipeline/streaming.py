@@ -345,28 +345,7 @@ class StreamingPipeline:
                 name="poison-pills"
             ))
         
-        # Periodic status logger (replaces Rich Live table)
-        async def log_status_periodically():
-            try:
-                while not self._stop_requested and not self._shutdown_event.is_set():
-                    trans_total = len(to_crawl) + len(to_translate)
-                    logger.info(
-                        "pipeline_status",
-                        crawled=self.stats.chapters_crawled,
-                        translated=self.stats.chapters_translated,
-                        total=trans_total,
-                        in_queue=self.stats.chapters_in_queue,
-                        crawl_errors=self.stats.crawl_errors,
-                        translate_errors=self.stats.translate_errors,
-                        glossary_entries=self.stats.glossary_count,
-                    )
-                    await asyncio.sleep(5)
-            except asyncio.CancelledError:
-                pass
-
         try:
-            update_task = asyncio.create_task(log_status_periodically())
-
             try:
                 await asyncio.gather(*tasks)
             except asyncio.CancelledError:
@@ -386,11 +365,6 @@ class StreamingPipeline:
                     await asyncio.gather(*tasks, return_exceptions=True)
             finally:
                 self._stop_requested = True
-                update_task.cancel()
-                try:
-                    await update_task
-                except asyncio.CancelledError:
-                    pass
 
         except Exception as e:
             logger.error("pipeline_error", error=str(e))
