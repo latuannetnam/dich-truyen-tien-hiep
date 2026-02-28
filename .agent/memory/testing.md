@@ -40,9 +40,9 @@ cd web && npm run lint
 
 ```
 tests/
-├── test_api.py            # FastAPI endpoint tests (books, pipeline, settings, glossary, WebSocket)
+├── test_api.py            # FastAPI endpoint tests (books, pipeline, resumable, settings, glossary, WebSocket)
 ├── test_events.py         # EventBus pub/sub tests
-├── test_pipeline_service.py # PipelineService job lifecycle tests
+├── test_pipeline_service.py # PipelineService job lifecycle + save/scan settings tests
 ├── test_glossary_service.py # GlossaryService CRUD unit tests
 ├── test_services.py       # BookService + StyleService unit tests
 ├── test_crawler.py

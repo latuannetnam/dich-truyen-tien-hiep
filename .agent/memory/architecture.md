@@ -75,7 +75,7 @@ The API route (`api/routes/pipeline.py`) rejects `crawl_only + translate_only` w
 | **Export** | `exporter/epub_assembler.py` | Direct EPUB assembly |
 | | `exporter/calibre.py` | Calibre AZW3/MOBI/PDF conversion |
 | **Services** | `services/events.py` | EventBus pub/sub for pipeline events |
-| | `services/pipeline_service.py` | Job lifecycle management, wraps StreamingPipeline |
+| | `services/pipeline_service.py` | Job lifecycle, wraps StreamingPipeline, `_save_pipeline_settings()`, `scan_books_on_startup()` |
 | | `services/config_service.py` | Read/write `.env` settings, test LLM connection |
 | | `services/glossary_service.py` | Glossary CRUD business logic (testable without HTTP) |
 | | `services/export_service.py` | Wraps DirectEPUBAssembler + CalibreExporter |
@@ -85,19 +85,19 @@ The API route (`api/routes/pipeline.py`) rejects `crawl_only + translate_only` w
 | **Logging** | `log.py` | Central `structlog` config; `configure_logging(verbosity, log_file)` |
 | **Config** | `config.py` | Pydantic settings & env vars |
 | **Progress** | `utils/progress.py` | BookProgress & chapter status |
-| **API** | `api/server.py` | FastAPI app factory with CORS, services init |
+| **API** | `api/server.py` | FastAPI app factory with CORS, services init, startup book scan |
 | | `api/routes/books.py` | Book list, detail, chapter content endpoints |
-| | `api/routes/pipeline.py` | Pipeline start, list, get, cancel endpoints |
+| | `api/routes/pipeline.py` | Pipeline start, list, get, cancel, **resumable** endpoints |
 | | `api/routes/settings.py` | Settings GET/PUT, test-connection endpoint |
 | | `api/routes/glossary.py` | Per-book glossary CRUD, CSV import/export |
 | | `api/routes/styles.py` | Style list and detail endpoints |
 | | `api/routes/export.py` | Export formats, status, start, download |
 | | `api/websocket.py` | WebSocket `/ws/pipeline/{job_id}` for real-time events (graceful disconnect handling) |
 | **Web UI** | `web/src/app/` | Next.js App Router pages (dashboard, library, book, reader, new, pipeline, settings, glossary) |
-| | `web/src/components/` | React components (Sidebar, BookCard, ChapterTable, ReaderView, ProgressPanel, WorkerCards, EventLog, WizardSteps, ActiveJobs, GlossaryEditor, ToastProvider) |
+| | `web/src/components/` | React components (Sidebar, BookCard, ChapterTable, ReaderView, ProgressPanel, WorkerCards, EventLog, WizardSteps, ActiveJobs, GlossaryEditor, ToastProvider, **ResumableSection**, **ResumeBanner**) |
 | | `web/src/hooks/useWebSocket.ts` | React hook for pipeline WebSocket events |
-| | `web/src/lib/api.ts` | Frontend API client (books, pipeline, settings, glossary, styles, export) |
-| | `web/src/lib/types.ts` | TypeScript interfaces matching Pydantic models |
+| | `web/src/lib/api.ts` | Frontend API client (books, pipeline, resumable, settings, glossary, styles, export) |
+| | `web/src/lib/types.ts` | TypeScript interfaces matching Pydantic models (includes `ResumableBook`) |
 
 ## Common Modification Points
 

@@ -104,6 +104,18 @@ Theo dõi tiến trình dịch real-time qua WebSocket:
 <!-- TODO: Add screenshot -->
 <!-- ![Pipeline Monitor](docs/screenshots/pipeline-monitor.png) -->
 
+### 🔄 Resumable Pipeline
+
+Phát hiện sách dịch dang dở và tiếp tục dịch sau khi khởi động lại:
+- **Resumable Books section**: Hiển thị trên trang Pipeline với progress bar và status badges
+- **Resume banner**: Banner cảnh báo trên Book Detail khi sách chưa dịch xong
+- **Options form**: Mở rộng inline form để tuỳ chỉnh style, workers, chapters trước khi resume
+- **Auto-detect**: Quét `books/` khi khởi động, tự tạo settings mặc định cho sách từ CLI
+- **Pre-fill settings**: Tự điền settings từ lần chạy trước (`last_pipeline_settings.json`)
+
+<!-- TODO: Add screenshot -->
+<!-- ![Resumable Pipeline](docs/screenshots/resumable-pipeline.png) -->
+
 ## Bắt đầu
 
 ### Yêu cầu
@@ -164,11 +176,11 @@ src/
 ├── components/
 │   ├── layout/             # Sidebar, LayoutWrapper
 │   ├── library/            # BookCard, BookCardSkeleton
-│   ├── book/               # ChapterTable
+│   ├── book/               # ChapterTable, ResumeBanner
 │   ├── reader/             # ReaderView (paragraph-aligned side-by-side)
 │   ├── glossary/           # GlossaryEditor (inline CRUD, search, CSV import/export)
 │   ├── dashboard/          # StatCard, ActiveJobs
-│   ├── pipeline/           # ProgressPanel, WorkerCards, EventLog
+│   ├── pipeline/           # ProgressPanel, WorkerCards, EventLog, ResumableSection
 │   ├── wizard/             # WizardSteps
 │   └── ui/                 # ToastProvider, ErrorBoundary, EmptyState
 ├── hooks/
@@ -197,6 +209,7 @@ Requests đến `/api/*` được proxy sang `http://127.0.0.1:8000/api/*` qua c
 | GET | `/api/v1/books/:id/glossary/export` | Export glossary CSV |
 | POST | `/api/v1/books/:id/glossary/import` | Import glossary CSV |
 | POST | `/api/v1/pipeline/start` | Start pipeline job |
+| GET | `/api/v1/pipeline/resumable` | List incomplete books for resume |
 | GET | `/api/v1/pipeline/jobs` | List all jobs |
 | GET | `/api/v1/pipeline/jobs/:id` | Get job status |
 | POST | `/api/v1/pipeline/jobs/:id/cancel` | Cancel job |
