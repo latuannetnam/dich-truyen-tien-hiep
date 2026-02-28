@@ -19,6 +19,7 @@ import {
 import { getBook, getExportStatus, startExport, getExportDownloadUrl } from "@/lib/api";
 import type { BookDetail, ExportStatus } from "@/lib/types";
 import ChapterTable from "@/components/book/ChapterTable";
+import ResumeBanner from "@/components/book/ResumeBanner";
 import { useToast } from "@/components/ui/ToastProvider";
 
 const EXPORT_FORMATS = ["epub", "azw3", "mobi", "pdf"];
@@ -191,6 +192,9 @@ export default function BookDetailPage() {
           />
         </div>
       </div>
+
+      {/* Resume banner */}
+      <ResumeBanner bookId={bookId} bookDetail={book} />
 
       {/* Action buttons */}
       <div className="flex gap-3 mb-6">
