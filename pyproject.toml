@@ -1,6 +1,6 @@
 [project]
 name = "dich-truyen"
-version = "0.2.1"
+version = "0.3.0"
 description = "Chinese novel translation tool - Crawl, translate, and export to ebook"
 readme = "README.md"
 license = { text = "MIT" }
