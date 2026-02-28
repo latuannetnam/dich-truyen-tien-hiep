@@ -4,6 +4,7 @@ import type {
   ChapterContent,
   PipelineJob,
   StartPipelineRequest,
+  ResumableBook,
   AppSettings,
   TestConnectionResult,
   GlossaryResponseType,
@@ -78,6 +79,10 @@ export async function cancelPipelineJob(jobId: string): Promise<PipelineJob> {
   });
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
+}
+
+export async function getResumableBooks(): Promise<ResumableBook[]> {
+  return fetchJson<ResumableBook[]>(`${API_BASE}/pipeline/resumable`);
 }
 
 // --- Settings API ---

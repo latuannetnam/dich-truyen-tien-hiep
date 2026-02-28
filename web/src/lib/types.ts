@@ -94,6 +94,21 @@ export interface StartPipelineRequest {
   force?: boolean;
 }
 
+/** Book with incomplete translation, available for resume. */
+export interface ResumableBook {
+  book_dir: string;
+  book_id: string;
+  title: string;
+  title_vi: string;
+  total_chapters: number;
+  translated: number;
+  crawled: number;
+  pending: number;
+  errors: number;
+  last_settings: Partial<StartPipelineRequest> | null;
+  last_run_at: string | null;
+}
+
 /** Application settings. */
 export interface AppSettings {
   llm: {
