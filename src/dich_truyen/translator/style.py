@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field
-from rich.console import Console
+import structlog
 
 from dich_truyen.config import get_config
 
-console = Console()
+logger = structlog.get_logger()
 
 
 class StyleTemplate(BaseModel):
@@ -73,7 +73,7 @@ class StyleTemplate(BaseModel):
                 default_flow_style=False,
                 sort_keys=False,
             )
-        console.print(f"[green]Saved style template to {path}[/green]")
+        logger.info("style_saved", path=str(path))
 
     @classmethod
     def from_yaml(cls, path: Path) -> "StyleTemplate":
@@ -292,14 +292,14 @@ class StyleManager:
         if self.styles_dir:
             yaml_path = self.styles_dir / f"{name}.yaml"
             if yaml_path.exists():
-                console.print(f"[dim]  Using custom style: {yaml_path}[/dim]")
+                logger.debug("style_loaded", name=name, source="custom", path=str(yaml_path))
                 style = StyleTemplate.from_yaml(yaml_path)
                 self._cache[name] = style
                 return style
 
         # Fall back to built-in
         if name in BUILT_IN_STYLES:
-            console.print(f"[dim]  Using built-in style: {name}[/dim]")
+            logger.debug("style_loaded", name=name, source="built-in")
             self._cache[name] = BUILT_IN_STYLES[name]
             return BUILT_IN_STYLES[name]
 
@@ -371,7 +371,7 @@ async def generate_style_from_description(description: str) -> StyleTemplate:
             data = json.loads(json_match.group())
             return StyleTemplate.model_validate(data)
         except (json.JSONDecodeError, Exception) as e:
-            console.print(f"[red]Failed to parse style response: {e}[/red]")
+            logger.error("style_parse_failed", error=str(e))
 
     # Return a basic template if parsing fails
     return StyleTemplate(
