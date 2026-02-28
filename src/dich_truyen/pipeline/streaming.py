@@ -6,10 +6,7 @@ from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 from pydantic import BaseModel
-from rich.console import Console
-from rich.live import Live
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TaskProgressColumn
-from rich.table import Table
+import structlog
 
 from dich_truyen.config import PipelineConfig, get_config
 from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
@@ -19,7 +16,7 @@ if TYPE_CHECKING:
     from dich_truyen.translator.glossary import Glossary, GlossaryEntry
     from dich_truyen.crawler.downloader import ChapterDownloader
 
-console = Console()
+logger = structlog.get_logger()
 
 
 class PipelineResult(BaseModel):
@@ -203,25 +200,27 @@ class StreamingPipeline:
         from dich_truyen.config import log_llm_config_summary
         log_llm_config_summary()
         
-        console.print(f"\n[bold blue]═══ Streaming Pipeline ═══[/bold blue]")
-        console.print(f"Book: {self.progress.title} ({self.progress.title_vi or 'translating...'})")
-        console.print(f"Chapters: {len(chapters)} total")
-        console.print(f"  • To crawl: {len(to_crawl)}")
-        console.print(f"  • To translate: {len(to_translate)} (already crawled)")
-        console.print(f"  • Already done: {len(already_done)}")
-        
+        logger.info(
+            "pipeline_start",
+            book=self.progress.title,
+            book_vi=self.progress.title_vi or "translating...",
+            total=len(chapters),
+            to_crawl=len(to_crawl),
+            to_translate=len(to_translate),
+            already_done=len(already_done),
+        )
+
         # Check if anything to do
         if not to_crawl and not to_translate:
-            console.print("[green]All chapters already completed![/green]")
+            logger.info("pipeline_all_done")
             return PipelineResult(
                 total_chapters=len(chapters),
                 skipped_crawl=len(chapters),
                 skipped_translate=len(chapters),
-                all_done=True,  # All chapters are already translated
+                all_done=True,
             )
-        
-        # Setup translation engine (this also translates book metadata)
-        console.print(f"\n[dim]Setting up translation engine...[/dim]")
+
+        logger.debug("setting_up_engine")
         
         # Check if raw files already exist for glossary generation
         raw_dir = self.book_dir / "raw"
@@ -256,10 +255,10 @@ class StreamingPipeline:
         
         # Handle crawl_only mode - skip translation setup and workers
         if crawl_only:
-            console.print(f"[dim]Crawl-only mode: {len(to_crawl)} chapters to crawl[/dim]")
-            
+            logger.info("crawl_only_mode", to_crawl=len(to_crawl))
+
             if not to_crawl:
-                console.print("[green]All chapters already crawled![/green]")
+                logger.info("all_chapters_crawled")
                 return PipelineResult(
                     total_chapters=len(chapters),
                     crawled=0,
@@ -267,15 +266,16 @@ class StreamingPipeline:
                     skipped_crawl=len(chapters),
                     skipped_translate=len(chapters),
                 )
-            
+
             # Just run crawler, no translation
             self.stats.total_chapters = len(to_crawl)
             await self._crawl_producer(to_crawl)
-            
-            console.print(f"\n[bold green]═══ Crawl Complete! ═══[/bold green]")
-            console.print(f"  Crawled: {self.stats.chapters_crawled}")
-            if self.stats.crawl_errors:
-                console.print(f"  [yellow]Errors: {self.stats.crawl_errors}[/yellow]")
+
+            logger.info(
+                "crawl_complete",
+                crawled=self.stats.chapters_crawled,
+                errors=self.stats.crawl_errors,
+            )
             
             return PipelineResult(
                 total_chapters=len(chapters),
@@ -287,8 +287,7 @@ class StreamingPipeline:
                 errors=self.stats.errors,
             )
         
-        # Start concurrent execution
-        console.print(f"\n[dim]Starting {self.num_workers} translator workers...[/dim]")
+        logger.debug("starting_workers", workers=self.num_workers)
         
         # Create tasks
         tasks = []
@@ -346,102 +345,55 @@ class StreamingPipeline:
                 name="poison-pills"
             ))
         
-        # Run with Live table display (in-place updates)
-        from rich.live import Live
-        from rich.box import SIMPLE
-        
-        def build_status_table():
-            """Build the current status table."""
-            crawl_pct = int(100 * self.stats.chapters_crawled / len(to_crawl)) if to_crawl else 100
-            trans_total = len(to_crawl) + len(to_translate)
-            trans_pct = int(100 * self.stats.chapters_translated / trans_total) if trans_total else 100
-            
-            # Build table title with translate progress
-            title = f"[bold]Translate: {self.stats.chapters_translated}/{trans_total} ({trans_pct}%)[/bold]"
-            if self.stats.translate_errors:
-                title += f" | [red]Err: {self.stats.translate_errors}[/red]"
-            
-            # Build caption with glossary count and status message
-            caption_parts = []
-            if self.stats.glossary_count > 0:
-                caption_parts.append(f"Glossary: {self.stats.glossary_count} entries")
-            if self.stats.status_message:
-                caption_parts.append(self.stats.status_message)
-            caption = " | ".join(caption_parts) if caption_parts else None
-            
-            # Create table with columns: Crawl | Worker 1 | Worker 2 | Worker 3
-            table = Table(title=title, caption=caption, show_header=True, header_style="bold", box=SIMPLE, padding=(0, 1))
-            table.add_column("Crawl", style="cyan", width=25)
-            for wid in range(1, self.num_workers + 1):
-                table.add_column(f"Worker {wid}", style="green", width=30)
-            
-            # Build status for each column
-            crawl_status = f"{self.stats.chapters_crawled}/{len(to_crawl)} ({crawl_pct}%)"
-            if self.stats.crawl_status and crawl_pct < 100:
-                crawl_status += f"\n{self.stats.crawl_status}"
-            else:
-                crawl_status += "\n[dim]done[/dim]" if crawl_pct == 100 else ""
-            
-            worker_statuses = []
-            for wid in range(1, self.num_workers + 1):
-                status = self.stats.worker_status.get(wid, "idle")
-                if status == "idle":
-                    worker_statuses.append("[dim]idle[/dim]")
-                elif "done" in status:
-                    worker_statuses.append(f"[dim]{status}[/dim]")
-                else:
-                    worker_statuses.append(status)
-            
-            # Add the row
-            table.add_row(crawl_status, *worker_statuses)
-            
-            return table
-        
+        # Periodic status logger (replaces Rich Live table)
+        async def log_status_periodically():
+            try:
+                while not self._stop_requested and not self._shutdown_event.is_set():
+                    trans_total = len(to_crawl) + len(to_translate)
+                    logger.info(
+                        "pipeline_status",
+                        crawled=self.stats.chapters_crawled,
+                        translated=self.stats.chapters_translated,
+                        total=trans_total,
+                        in_queue=self.stats.chapters_in_queue,
+                        crawl_errors=self.stats.crawl_errors,
+                        translate_errors=self.stats.translate_errors,
+                        glossary_entries=self.stats.glossary_count,
+                    )
+                    await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                pass
+
         try:
-            with Live(build_status_table(), console=console, refresh_per_second=0.5, transient=True) as live:
-                async def update_display():
-                    try:
-                        while not self._stop_requested and not self._shutdown_event.is_set():
-                            live.update(build_status_table())
-                            await asyncio.sleep(1)  # Update every 1 second
-                    except asyncio.CancelledError:
-                        pass  # Normal exit when cancelled
-                
-                update_task = asyncio.create_task(update_display())
-                
+            update_task = asyncio.create_task(log_status_periodically())
+
+            try:
+                await asyncio.gather(*tasks)
+            except asyncio.CancelledError:
+                logger.warning("pipeline_shutdown_requested")
+                self._shutdown_event.set()
+                self._cancelled = True
+
                 try:
-                    # Wait for all tasks to complete
-                    await asyncio.gather(*tasks)
+                    await asyncio.wait_for(
+                        asyncio.gather(*tasks, return_exceptions=True),
+                        timeout=30
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("pipeline_shutdown_timeout")
+                    for task in tasks:
+                        task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+            finally:
+                self._stop_requested = True
+                update_task.cancel()
+                try:
+                    await update_task
                 except asyncio.CancelledError:
-                    # Graceful shutdown: signal workers, give them time to finish
-                    console.print("\n[yellow]Shutdown requested, finishing current work...[/yellow]")
-                    self._shutdown_event.set()
-                    self._cancelled = True
-                    
-                    # Wait up to 30s for workers to finish current chapters
-                    try:
-                        await asyncio.wait_for(
-                            asyncio.gather(*tasks, return_exceptions=True),
-                            timeout=30
-                        )
-                    except asyncio.TimeoutError:
-                        console.print("[yellow]Timeout waiting for workers, forcing stop[/yellow]")
-                        for task in tasks:
-                            task.cancel()
-                        # Wait for cancellation to complete
-                        await asyncio.gather(*tasks, return_exceptions=True)
-                finally:
-                    # Always stop display updates when tasks complete
-                    self._stop_requested = True
-                    update_task.cancel()
-                    try:
-                        await update_task
-                    except asyncio.CancelledError:
-                        pass
-        
+                    pass
+
         except Exception as e:
-            # Handle any other unexpected exceptions
-            console.print(f"[red]Pipeline error: {e}[/red]")
+            logger.error("pipeline_error", error=str(e))
             self._cancelled = True
         
         finally:
@@ -463,25 +415,18 @@ class StreamingPipeline:
                 self.progress.save(self.book_dir)
         
         # Determine if all chapters in range are done
-        # all_done = all chapters translated (no pending crawl or translate)
         total_target = len(to_crawl) + len(to_translate)
         all_translated = self.stats.chapters_translated >= total_target
         was_cancelled = self._cancelled
-        
-        # Final summary
-        if was_cancelled:
-            console.print(f"\n[bold yellow]═══ Pipeline Interrupted ═══[/bold yellow]")
-        else:
-            console.print(f"\n[bold green]═══ Pipeline Complete! ═══[/bold green]")
-        console.print(f"  Crawled: {self.stats.chapters_crawled}")
-        console.print(f"  Translated: {self.stats.chapters_translated}")
-        if self.stats.crawl_errors:
-            console.print(f"  [yellow]Crawl errors: {self.stats.crawl_errors}[/yellow]")
-        if self.stats.translate_errors:
-            console.print(f"  [yellow]Translate errors: {self.stats.translate_errors}[/yellow]")
-        
-        if self.glossary and len(self.glossary) > 0:
-            console.print(f"  Glossary: {len(self.glossary)} entries saved")
+
+        logger.info(
+            "pipeline_complete" if not was_cancelled else "pipeline_interrupted",
+            crawled=self.stats.chapters_crawled,
+            translated=self.stats.chapters_translated,
+            crawl_errors=self.stats.crawl_errors,
+            translate_errors=self.stats.translate_errors,
+            glossary_entries=len(self.glossary) if self.glossary else 0,
+        )
         
         return PipelineResult(
             total_chapters=self.stats.total_chapters,
@@ -728,7 +673,7 @@ class StreamingPipeline:
                 self._glossary_generated = True
                 self._glossary_version = 1
                 self._glossary_ready_event.set()
-                console.print(f"[dim]  Glossary already has {len(self.glossary)} entries[/dim]")
+                logger.debug("glossary_already_populated", entries=len(self.glossary))
                 return
             
             # Check for raw files
@@ -744,7 +689,7 @@ class StreamingPipeline:
                 self._glossary_ready_event.set()
                 return
             
-            console.print("[blue]Generating glossary from crawled chapters...[/blue]")
+            logger.info("generating_glossary_from_crawled")
             
             try:
                 # Get config values
@@ -802,8 +747,8 @@ class StreamingPipeline:
                 
             except Exception as e:
                 # FAILURE: Don't set flag - let another worker retry
-                console.print(f"[red]Glossary generation failed: {e}[/red]")
-                console.print("[yellow]Another worker will retry...[/yellow]")
+                logger.error("glossary_generation_failed", error=str(e))
+                logger.warning("glossary_will_retry")
                 # Don't set self._glossary_generated = True
     
     async def _wait_for_glossary_or_shutdown(self) -> bool:
