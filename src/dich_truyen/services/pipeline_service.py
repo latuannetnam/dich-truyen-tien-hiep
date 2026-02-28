@@ -5,13 +5,39 @@ Does NOT replace the CLI pipeline command — both coexist.
 """
 
 import asyncio
+import json
 import time
 import uuid
+from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Optional
 
 from dich_truyen.services.events import EventBus, PipelineEvent
+
+
+def _save_pipeline_settings(
+    book_dir: Path,
+    style: str = "tien_hiep",
+    workers: int = 3,
+    chapters: Optional[str] = None,
+    crawl_only: bool = False,
+    translate_only: bool = False,
+    no_glossary: bool = False,
+) -> None:
+    """Save pipeline settings to book directory for resume pre-fill."""
+    settings = {
+        "style": style,
+        "workers": workers,
+        "chapters": chapters,
+        "crawl_only": crawl_only,
+        "translate_only": translate_only,
+        "no_glossary": no_glossary,
+        "last_run_at": datetime.now(timezone.utc).isoformat(),
+    }
+    settings_file = book_dir / "last_pipeline_settings.json"
+    settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+
 
 
 class JobStatus(StrEnum):
@@ -144,6 +170,18 @@ class PipelineService:
                     job["url"], get_config().books_dir
                 )
                 job["book_dir"] = str(target_dir)
+
+            # Save pipeline settings for resume
+            _save_pipeline_settings(
+                book_dir=target_dir,
+                style=job["style"],
+                workers=job["workers"],
+                chapters=job["chapters"],
+                crawl_only=job["crawl_only"],
+                translate_only=job["translate_only"],
+                no_glossary=job["no_glossary"],
+            )
+
 
             # Import glossary if provided
             if job["glossary"]:
