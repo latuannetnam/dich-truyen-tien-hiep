@@ -86,9 +86,21 @@ async def get_resumable_books() -> list[dict]:
     if not _books_dir.exists():
         return resumable
 
+    # Exclude books that already have an active (running/pending) job
+    active_book_dirs = set()
+    for job in _pipeline_service.list_jobs():
+        if job["status"] in ("running", "pending"):
+            job_book_dir = job.get("book_dir")
+            if job_book_dir:
+                active_book_dirs.add(Path(job_book_dir).name)
+
     for book_dir in sorted(_books_dir.iterdir()):
         book_json = book_dir / "book.json"
         if not book_json.exists():
+            continue
+
+        # Skip if already has an active job
+        if book_dir.name in active_book_dirs:
             continue
 
         progress = BookProgress.load(book_dir)
