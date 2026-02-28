@@ -3,12 +3,12 @@
 from pathlib import Path
 from typing import Optional
 
-from rich.console import Console
+import structlog
 
 from dich_truyen.formatter.metadata import BookMetadataManager
 from dich_truyen.utils.progress import BookProgress, Chapter
 
-console = Console()
+logger = structlog.get_logger()
 
 # HTML template for the book
 BOOK_HTML_TEMPLATE = """<!DOCTYPE html>
@@ -284,7 +284,7 @@ class HTMLAssembler:
         if not chapters:
             raise ValueError("No translated chapters found")
 
-        console.print(f"[blue]Assembling {len(chapters)} chapters...[/blue]")
+        logger.info("assembling", chapters=len(chapters))
 
         # Generate TOC
         toc_content = self.generate_toc(chapters)
@@ -319,7 +319,7 @@ class HTMLAssembler:
         self.metadata.update_progress(self.progress)
         self.progress.save(self.book_dir)
 
-        console.print(f"[green]Book assembled: {output_path}[/green]")
+        logger.info("book_assembled", path=str(output_path))
 
         return output_path
 

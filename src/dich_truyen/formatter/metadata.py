@@ -4,11 +4,8 @@ from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field
-from rich.console import Console
 
 from dich_truyen.utils.progress import BookProgress
-
-console = Console()
 
 
 class BookMetadataManager(BaseModel):
