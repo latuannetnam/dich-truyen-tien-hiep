@@ -1,1 +1,1 @@
-uv run dich-truyen ui
+uv run dich-truyen -v ui
