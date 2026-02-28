@@ -490,7 +490,12 @@ class StreamingPipeline:
                         # Update status safely
                         await self._update_chapter_status(chapter, ChapterStatus.CRAWLED)
                         self.stats.chapters_crawled += 1
-                        
+                        logger.info(
+                            "chapter_crawled",
+                            chapter=chapter.index,
+                            title=chapter.title_cn or "",
+                        )
+
                         # Put in queue for translation
                         await self.queue.put(chapter)
                         self.stats.chapters_in_queue += 1
@@ -499,6 +504,7 @@ class StreamingPipeline:
                         error_msg = f"Crawl chapter {chapter.index}: {str(e)}"
                         self.stats.errors.append(error_msg)
                         self.stats.crawl_errors += 1
+                        logger.error("chapter_crawl_error", chapter=chapter.index, error=str(e))
                         await self._update_chapter_status(chapter, ChapterStatus.ERROR, str(e))
                     
                     # Rate limiting
@@ -552,6 +558,12 @@ class StreamingPipeline:
                 
                 # Create progress callback for chunk-level updates
                 chapter_title = (chapter.title_cn or "")[:15]
+                logger.info(
+                    "chapter_translating",
+                    worker=worker_id,
+                    chapter=chapter.index,
+                    title=chapter_title,
+                )
                 def progress_callback(completed_count, total_chunks, status=""):
                     # status from engine: "translating [1,2]" or "[done]" or "[1,2]"
                     # Show: "Ch.5: 章节标题... 2/5 [1,2]"
@@ -583,11 +595,23 @@ class StreamingPipeline:
                 # Update status safely
                 await self._update_chapter_status(chapter, ChapterStatus.TRANSLATED)
                 self.stats.chapters_translated += 1
-            
+                logger.info(
+                    "chapter_translated",
+                    worker=worker_id,
+                    chapter=chapter.index,
+                    title=chapter.title_vi or chapter.title_cn or "",
+                )
+
             except Exception as e:
                 error_msg = f"Translate chapter {chapter.index}: {str(e)}"
                 self.stats.errors.append(error_msg)
                 self.stats.translate_errors += 1
+                logger.error(
+                    "chapter_translate_error",
+                    worker=worker_id,
+                    chapter=chapter.index,
+                    error=str(e),
+                )
                 await self._update_chapter_status(chapter, ChapterStatus.ERROR, str(e))
     
     async def _update_chapter_status(
