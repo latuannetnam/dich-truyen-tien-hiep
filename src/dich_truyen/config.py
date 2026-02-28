@@ -5,8 +5,7 @@ from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from rich.console import Console
-from rich.table import Table
+import structlog
 
 # ---------------------------------------------------------------------------
 # Sub-config models
@@ -280,93 +279,48 @@ def get_effective_llm_config(
     )
 
     if task_name:
-        console = Console()
-        console.print(f"[blue]  {task_name} LLM Config:[/blue]")
-        _fields = [
-            ("Model", "model", specific.model),
-            ("API Key", None, specific.api_key),
-            ("Base URL", "base_url", specific.base_url),
-            ("Max Tokens", "max_tokens", specific.max_tokens),
-            ("Temperature", None, specific.temperature),
-        ]
-        for label, attr, spec_val in _fields:
-            val = getattr(effective, attr) if attr else None
-            is_specific = bool(spec_val) if label != "Temperature" else spec_val > 0
-            source = "(specific)" if is_specific else "(from default)"
-            if label == "API Key":
-                display = (
-                    effective.api_key[:8] + "..."
-                    if len(effective.api_key) > 8
-                    else "***"
-                )
-                console.print(f"[blue]    • {label}: {display} {source}[/blue]")
-            elif label == "Temperature":
-                console.print(
-                    f"[blue]    • {label}: {effective.temperature} {source}[/blue]"
-                )
-            else:
-                console.print(f"[blue]    • {label}: {val} {source}[/blue]")
+        logger = structlog.get_logger()
+        logger.debug(
+            "llm_config",
+            task=task_name,
+            model=effective.model,
+            base_url=effective.base_url,
+            max_tokens=effective.max_tokens,
+            temperature=effective.temperature,
+            api_key=effective.api_key[:8] + "..." if len(effective.api_key) > 8 else "***",
+        )
 
     return effective
 
 
 def log_llm_config_summary() -> None:
-    """Log a summary table of all LLM configurations.
-
-    Shows default config and any task-specific overrides in a clear table format.
-    """
-    console = Console()
+    """Log a summary of all LLM configurations."""
+    logger = structlog.get_logger()
     app_config = get_config()
 
-    console.print("\n[bold blue]=== LLM Configuration ===[/bold blue]")
-
-    table = Table(show_header=True, header_style="bold blue")
-    table.add_column("Task", style="cyan", width=12)
-    table.add_column("Model", style="green")
-    table.add_column("Base URL", style="yellow")
-    table.add_column("Max Tokens", style="magenta", justify="right")
-    table.add_column("Temperature", style="magenta", justify="right")
-    table.add_column("Source", style="dim")
-
-    # Default config
-    table.add_row(
-        "Default",
-        app_config.llm.model,
-        app_config.llm.base_url,
-        str(app_config.llm.max_tokens),
-        str(app_config.llm.temperature),
-        "OPENAI_*",
+    logger.info(
+        "llm_config_default",
+        model=app_config.llm.model,
+        base_url=app_config.llm.base_url,
+        max_tokens=app_config.llm.max_tokens,
+        temperature=app_config.llm.temperature,
     )
 
-    # Task-specific configs
     task_configs: list[tuple[str, TaskLLMConfig]] = [
-        ("Crawler", app_config.crawler_llm),
-        ("Glossary", app_config.glossary_llm),
-        ("Translator", app_config.translator_llm),
+        ("crawler", app_config.crawler_llm),
+        ("glossary", app_config.glossary_llm),
+        ("translator", app_config.translator_llm),
     ]
 
     for task_name, task_cfg in task_configs:
         has_override = bool(task_cfg.model or task_cfg.api_key)
         if has_override:
             effective = get_effective_llm_config(task_cfg, app_config.llm)
-            source = f"{task_name.upper()}_LLM_*" if task_cfg.model else "OPENAI_* (fallback)"
-            table.add_row(
-                task_name,
-                effective.model,
-                effective.base_url,
-                str(effective.max_tokens),
-                str(effective.temperature),
-                source,
+            logger.info(
+                "llm_config_override",
+                task=task_name,
+                model=effective.model,
+                base_url=effective.base_url,
+                max_tokens=effective.max_tokens,
+                temperature=effective.temperature,
             )
-        else:
-            table.add_row(
-                task_name,
-                app_config.llm.model,
-                app_config.llm.base_url,
-                str(app_config.llm.max_tokens),
-                str(app_config.llm.temperature),
-                "OPENAI_* (fallback)",
-            )
-
-    console.print(table)
-    console.print()
