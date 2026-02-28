@@ -108,7 +108,12 @@ uv run dich-truyen pipeline --book-dir books/my-book --force
 ### `pipeline` - Lệnh Chính
 
 ```bash
-uv run dich-truyen pipeline [OPTIONS]
+uv run dich-truyen [FLAGS] pipeline [OPTIONS]
+
+Flags chung (đặt trước lệnh con):
+  -v, --verbose         Hiện log chi tiết (DEBUG)
+  -q, --quiet           Chỉ hiện cảnh báo và lỗi
+  --log-file PATH       Ghi JSON log ra file
 
 Tùy chọn:
   --url TEXT            URL trang mục lục sách (cho sách mới)
@@ -172,6 +177,24 @@ uv run dich-truyen style list
 uv run dich-truyen style generate \
   --description "Văn phong ngôn tình, lãng mạn hiện đại" \
   -o styles/ngon_tinh.yaml
+```
+
+### Ghi Log & Debug
+
+Các flag `--verbose`, `--quiet`, và `--log-file` là tùy chọn chung, đặt **trước** lệnh con:
+
+```bash
+# Chế độ verbose — hiện tất cả log DEBUG
+uv run dich-truyen -v pipeline --url "https://..."
+
+# Chế độ quiet — chỉ hiện cảnh báo và lỗi
+uv run dich-truyen -q pipeline --book-dir books/my-book
+
+# Ghi log JSON ra file (để debug sau)
+uv run dich-truyen --log-file pipeline.log pipeline --url "https://..."
+
+# Kết hợp verbose + log file
+uv run dich-truyen -v --log-file debug.log pipeline --book-dir books/my-book
 ```
 
 ## Translation Styles

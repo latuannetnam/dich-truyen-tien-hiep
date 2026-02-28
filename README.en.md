@@ -108,7 +108,12 @@ uv run dich-truyen pipeline --book-dir books/my-book --force
 ### `pipeline` - Main Command
 
 ```bash
-uv run dich-truyen pipeline [OPTIONS]
+uv run dich-truyen [FLAGS] pipeline [OPTIONS]
+
+Global flags (placed before subcommand):
+  -v, --verbose         Show detailed DEBUG-level logs
+  -q, --quiet           Only show warnings and errors
+  --log-file PATH       Write JSON logs to file
 
 Options:
   --url TEXT            Book index page URL (for new books)
@@ -172,6 +177,24 @@ uv run dich-truyen style list
 uv run dich-truyen style generate \
   --description "Modern romance style, soft and emotional" \
   -o styles/romance.yaml
+```
+
+### Logging & Debug
+
+The `--verbose`, `--quiet`, and `--log-file` flags are global options placed **before** the subcommand:
+
+```bash
+# Verbose mode — show all DEBUG-level logs
+uv run dich-truyen -v pipeline --url "https://..."
+
+# Quiet mode — only show warnings and errors
+uv run dich-truyen -q pipeline --book-dir books/my-book
+
+# Write JSON logs to file (for post-mortem debugging)
+uv run dich-truyen --log-file pipeline.log pipeline --url "https://..."
+
+# Combine verbose + log file
+uv run dich-truyen -v --log-file debug.log pipeline --book-dir books/my-book
 ```
 
 ## Translation Styles
