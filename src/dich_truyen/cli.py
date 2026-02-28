@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Optional
 
 import click
+import structlog
 from dotenv import load_dotenv
-from rich.console import Console
 
 from dich_truyen import __version__
 from dich_truyen.config import AppConfig, set_config
 
-console = Console()
+logger = structlog.get_logger()
 
 
 def setup_config(env_file: Optional[Path] = None) -> None:
@@ -28,17 +28,25 @@ def setup_config(env_file: Optional[Path] = None) -> None:
 @click.group()
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
+@click.option("--log-file", type=click.Path(), help="Write JSON logs to file")
 @click.option("--env-file", type=click.Path(exists=True), help="Path to .env file")
 @click.version_option(version=__version__)
 @click.pass_context
-def cli(ctx, verbose: bool, quiet: bool, env_file: Optional[str]) -> None:
+def cli(ctx, verbose: bool, quiet: bool, log_file: Optional[str], env_file: Optional[str]) -> None:
     """Chinese novel translation tool.
 
     Crawl, translate, format, and export Chinese novels to ebooks.
     """
+    from dich_truyen.log import configure_logging
+
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
+
+    # Configure structured logging
+    verbosity = 1 if verbose else (-1 if quiet else 0)
+    log_path = Path(log_file) if log_file else None
+    configure_logging(verbosity=verbosity, log_file=log_path)
 
     # Setup configuration
     setup_config(Path(env_file) if env_file else None)
@@ -85,21 +93,21 @@ def pipeline(
     force: bool,
 ) -> None:
     """Run full pipeline: crawl + translate (concurrent) → export.
-    
+
     Uses streaming architecture for concurrent crawl/translate.
     Supports resume from any interruption point.
-    
+
     Examples:
-    
+
         # Full pipeline (crawl + translate + export)
         dich-truyen pipeline --url "https://..."
-        
+
         # Just crawl chapters (review before translation)
         dich-truyen pipeline --url "https://..." --crawl-only
-        
+
         # Translate existing book (skip crawl)
         dich-truyen pipeline --book-dir books/my-book --translate-only
-        
+
         # Use custom glossary
         dich-truyen pipeline --book-dir books/my-book --glossary custom.csv
     """
@@ -111,11 +119,11 @@ def pipeline(
 
     # Validate inputs
     if not url and not book_dir:
-        console.print("[red]Error: Either --url or --book-dir is required[/red]")
+        logger.error("missing_argument", detail="Either --url or --book-dir is required")
         raise SystemExit(1)
-    
+
     if crawl_only and translate_only:
-        console.print("[red]Error: Cannot use both --crawl-only and --translate-only[/red]")
+        logger.error("invalid_flags", detail="Cannot use both --crawl-only and --translate-only")
         raise SystemExit(1)
 
     async def run():
@@ -123,18 +131,18 @@ def pipeline(
         if book_dir:
             target_dir = Path(book_dir)
             if not target_dir.exists():
-                console.print(f"[red]Error: Directory not found: {target_dir}[/red]")
+                logger.error("dir_not_found", path=str(target_dir))
                 raise SystemExit(1)
         else:
             target_dir = await create_book_directory(url, get_config().books_dir)
-        
+
         # Import custom glossary if provided
         if glossary:
-            console.print(f"[blue]Importing glossary from {glossary}...[/blue]")
+            logger.info("importing_glossary", path=glossary)
             imported = Glossary.from_csv(Path(glossary))
             imported.save(target_dir)
-            console.print(f"[green]Imported {len(imported)} glossary entries[/green]")
-        
+            logger.info("glossary_imported", entries=len(imported))
+
         # Run streaming pipeline (concurrent crawl + translate)
         pipeline_obj = StreamingPipeline(translator_workers=workers)
         result = await pipeline_obj.run(
@@ -147,42 +155,42 @@ def pipeline(
             crawl_only=crawl_only,
             translate_only=translate_only,
         )
-        
+
         # Check for errors
         if result.failed_crawl > 0 or result.failed_translate > 0:
-            console.print(f"[yellow]Warning: {result.failed_crawl} crawl errors, {result.failed_translate} translate errors[/yellow]")
-        
+            logger.warning(
+                "pipeline_errors",
+                crawl_errors=result.failed_crawl,
+                translate_errors=result.failed_translate,
+            )
+
         # Export phase (only if all chapters are done, not cancelled)
         # Use result.all_done which is True only if all chapters translated AND not cancelled
-        should_export = (
-            not crawl_only 
-            and not skip_export 
-            and result.all_done
-        )
-        
+        should_export = not crawl_only and not skip_export and result.all_done
+
         if should_export:
-            console.print("\n[bold blue]═══ Exporting ═══[/bold blue]")
-            
+            logger.info("export_started")
+
             export_result = await export_book(
                 book_dir=target_dir,
                 output_format=output_format,
             )
-            
+
             if not export_result.success:
-                console.print(f"[red]Export failed: {export_result.error_message}[/red]")
+                logger.error("export_failed", error=export_result.error_message)
                 raise SystemExit(1)
-            
-            console.print(f"[green]✓ Exported: {export_result.output_path}[/green]")
+
+            logger.info("export_complete", path=str(export_result.output_path))
         elif crawl_only:
-            console.print("\n[dim]Translation/export skipped (--crawl-only)[/dim]")
+            logger.info("export_skipped", reason="crawl_only")
         elif skip_export:
-            console.print("\n[dim]Export skipped (--skip-export)[/dim]")
+            logger.info("export_skipped", reason="skip_export_flag")
         elif result.cancelled:
-            console.print("\n[yellow]Export skipped (cancelled by user)[/yellow]")
-            console.print("[dim]Run 'dich-truyen export' to manually export available chapters[/dim]")
+            logger.warning("export_skipped", reason="cancelled_by_user")
+            click.echo("Run 'dich-truyen export' to manually export available chapters")
         elif not result.all_done:
-            console.print("\n[yellow]Export skipped (not all chapters translated)[/yellow]")
-            console.print("[dim]Resume with same command, or run 'dich-truyen export' to export available chapters[/dim]")
+            logger.warning("export_skipped", reason="not_all_chapters_translated")
+            click.echo("Resume with same command, or run 'dich-truyen export' to export available chapters")
 
     asyncio.run(run())
 
@@ -213,19 +221,19 @@ def export(
     then converts to target format if needed.
     """
     import asyncio
-    
+
     from dich_truyen.exporter.calibre import export_book
-    
+
     result = asyncio.run(export_book(
         book_dir=Path(book_dir),
         output_format=output_format,
     ))
 
     if not result.success:
-        console.print(f"[red]Export failed: {result.error_message}[/red]")
+        logger.error("export_failed", error=result.error_message)
         raise SystemExit(1)
 
-    console.print(f"[green]Book exported: {result.output_path}[/green]")
+    logger.info("export_complete", path=str(result.output_path))
 
 
 # =============================================================================
@@ -245,14 +253,14 @@ def glossary():
 def glossary_export(book_dir: str, output: str) -> None:
     """Export glossary to CSV file."""
     from dich_truyen.translator.glossary import Glossary
-    
+
     g = Glossary.load(Path(book_dir))
     if not g or len(g) == 0:
-        console.print(f"[yellow]No glossary found in {book_dir}[/yellow]")
+        click.echo(f"No glossary found in {book_dir}")
         return
-    
+
     g.to_csv(Path(output))
-    console.print(f"[green]Exported {len(g)} entries to {output}[/green]")
+    click.echo(f"Exported {len(g)} entries to {output}")
 
 
 @glossary.command("import")
@@ -262,18 +270,18 @@ def glossary_export(book_dir: str, output: str) -> None:
 def glossary_import(book_dir: str, input_file: str, merge: bool) -> None:
     """Import glossary from CSV file."""
     from dich_truyen.translator.glossary import Glossary
-    
+
     imported = Glossary.from_csv(Path(input_file))
-    
+
     if merge:
         existing = Glossary.load_or_create(Path(book_dir))
         for entry in imported.entries:
             existing.add(entry)
         existing.save(Path(book_dir))
-        console.print(f"[green]Merged {len(imported)} entries (total: {len(existing)})[/green]")
+        click.echo(f"Merged {len(imported)} entries (total: {len(existing)})")
     else:
         imported.save(Path(book_dir))
-        console.print(f"[green]Imported {len(imported)} entries (replaced existing)[/green]")
+        click.echo(f"Imported {len(imported)} entries (replaced existing)")
 
 
 @glossary.command("show")
@@ -282,18 +290,18 @@ def glossary_import(book_dir: str, input_file: str, merge: bool) -> None:
 def glossary_show(book_dir: str, limit: int) -> None:
     """Display glossary contents."""
     from dich_truyen.translator.glossary import Glossary
-    
+
     g = Glossary.load(Path(book_dir))
     if not g or len(g) == 0:
-        console.print(f"[yellow]No glossary found in {book_dir}[/yellow]")
+        click.echo(f"No glossary found in {book_dir}")
         return
-    
-    console.print(f"[bold]Glossary ({len(g)} entries):[/bold]")
+
+    click.echo(f"Glossary ({len(g)} entries):")
     for i, entry in enumerate(g.entries[:limit]):
-        console.print(f"  {entry.chinese} → {entry.vietnamese} [{entry.category}]")
-    
+        click.echo(f"  {entry.chinese} → {entry.vietnamese} [{entry.category}]")
+
     if len(g) > limit:
-        console.print(f"  [dim]... and {len(g) - limit} more[/dim]")
+        click.echo(f"  ... and {len(g) - limit} more")
 
 
 # =============================================================================
@@ -311,13 +319,13 @@ def style():
 def style_list() -> None:
     """List available style templates."""
     from dich_truyen.translator.style import StyleManager
-    
+
     manager = StyleManager()
     styles = manager.list_available()
-    
-    console.print("[bold]Available styles:[/bold]")
+
+    click.echo("Available styles:")
     for s in styles:
-        console.print(f"  - {s}")
+        click.echo(f"  - {s}")
 
 
 @style.command("generate")
@@ -327,22 +335,25 @@ def style_generate(description: str, output: str) -> None:
     """Generate new style template using LLM."""
     import asyncio
     from pathlib import Path
+
     from dich_truyen.translator.style import generate_style_from_description
 
     async def run():
-        console.print(f"[blue]Generating style from description...[/blue]")
-        console.print(f"[dim]  Description: {description}[/dim]")
-        
+        logger.info("style_generating", description=description)
+
         style = await generate_style_from_description(description)
-        
+
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         style.to_yaml(output_path)
-        
-        console.print(f"[green]✓ Style '{style.name}' generated successfully[/green]")
-        console.print(f"[dim]  {len(style.guidelines)} guidelines[/dim]")
-        console.print(f"[dim]  {len(style.vocabulary)} vocabulary entries[/dim]")
-        console.print(f"[dim]  {len(style.examples)} examples[/dim]")
+
+        logger.info(
+            "style_generated",
+            name=style.name,
+            guidelines=len(style.guidelines),
+            vocabulary=len(style.vocabulary),
+            examples=len(style.examples),
+        )
 
     asyncio.run(run())
 
@@ -379,18 +390,19 @@ def ui(port: int, host: str, no_browser: bool) -> None:
     # Locate web/ directory relative to this source file
     web_dir = Path(__file__).resolve().parent.parent.parent / "web"
     if not web_dir.exists():
-        console.print(f"[red]Error: Web UI not found at {web_dir}[/red]")
-        console.print("[dim]Please ensure the 'web/' directory exists in the project root.[/dim]")
+        logger.error("web_ui_not_found", path=str(web_dir))
+        click.echo("Please ensure the 'web/' directory exists in the project root.")
         raise SystemExit(1)
 
     if not (web_dir / "node_modules").exists():
-        console.print("[red]Error: Frontend dependencies not installed.[/red]")
-        console.print("[dim]Run: cd web && npm install[/dim]")
+        logger.error("frontend_deps_missing")
+        click.echo("Run: cd web && npm install")
         raise SystemExit(1)
 
     npm_cmd = shutil.which("npm")
     if npm_cmd is None:
-        console.print("[red]Error: npm not found. Please install Node.js 18+.[/red]")
+        logger.error("npm_not_found")
+        click.echo("Please install Node.js 18+.")
         raise SystemExit(1)
 
     frontend_port = 3000
@@ -412,10 +424,10 @@ def ui(port: int, host: str, no_browser: bool) -> None:
 
         threading.Thread(target=open_browser, daemon=True).start()
 
-    console.print("[bold green]🚀 Dịch Truyện UI starting...[/bold green]")
-    console.print(f"[blue]   UI:  http://localhost:{frontend_port}[/blue]")
-    console.print(f"[blue]   API: http://{host}:{port}/api/docs[/blue]")
-    console.print("[dim]   Press Ctrl+C to stop[/dim]\n")
+    click.echo(f"🚀 Dịch Truyện UI starting...")
+    click.echo(f"   UI:  http://localhost:{frontend_port}")
+    click.echo(f"   API: http://{host}:{port}/api/docs")
+    click.echo("   Press Ctrl+C to stop\n")
     import signal
 
     config_uv = uvicorn.Config(
@@ -437,7 +449,7 @@ def ui(port: int, host: str, no_browser: bool) -> None:
     except SystemExit:
         pass
     finally:
-        console.print("\n[dim]Shutting down...[/dim]")
+        click.echo("\nShutting down...")
         next_proc.terminate()
         try:
             next_proc.wait(timeout=5)
@@ -447,4 +459,3 @@ def ui(port: int, host: str, no_browser: bool) -> None:
 
 if __name__ == "__main__":
     cli()
-
