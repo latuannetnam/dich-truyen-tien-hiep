@@ -301,8 +301,8 @@ git commit -m "feat: scan books on startup and create default pipeline settings"
 ## Task 3: Add `GET /api/v1/pipeline/resumable` endpoint
 
 **Files:**
-- Modify: `src/dich_truyen/api/routes/pipeline.py`
-- Modify: `src/dich_truyen/api/routes/books.py` (import `_books_dir`)
+- Modify: `src/dich_truyen/api/routes/pipeline.py` (add `_books_dir` + setter + `/resumable` route)
+- Modify: `src/dich_truyen/api/server.py` (call `pipeline.set_books_dir()`)
 - Test: `tests/test_api.py`
 
 **Step 1: Write the failing test**
@@ -414,11 +414,21 @@ Expected: FAIL (404 — endpoint doesn't exist yet)
 
 Add to `src/dich_truyen/api/routes/pipeline.py`:
 
+> **Fix (Audit Issue 2):** Do NOT import `_books_dir` from `books.py` — module-level import captures the default `Path("books")` before `server.py` sets the real path. Instead, add a `_books_dir` + setter directly on `pipeline.py`, mirroring the same pattern used by `books.py`.
+
 ```python
 import json
+from pathlib import Path
 
-from dich_truyen.api.routes.books import _books_dir
 from dich_truyen.utils.progress import BookProgress, ChapterStatus
+
+# Books directory — set by server.py at startup (same pattern as books.py)
+_books_dir: Path = Path("books")
+
+def set_books_dir(books_dir: Path) -> None:
+    """Set the books directory path."""
+    global _books_dir
+    _books_dir = books_dir
 
 
 @router.get("/resumable")
@@ -480,13 +490,16 @@ async def get_resumable_books() -> list[dict]:
     return resumable
 ```
 
-Also update `src/dich_truyen/api/routes/pipeline.py` to share `_books_dir` — the `_books_dir` is set in `books.py`. Import it directly:
+Also update `src/dich_truyen/api/server.py` to call `pipeline.set_books_dir()` alongside the existing `books.set_books_dir()` call:
 
 ```python
-from dich_truyen.api.routes.books import _books_dir
+from dich_truyen.api.routes import pipeline as pipeline_routes
+
+# In create_app(), alongside existing books.set_books_dir(books_dir):
+pipeline_routes.set_books_dir(books_dir)
 ```
 
-> **Important:** The route `/resumable` must be registered BEFORE `/jobs/{job_id}` to avoid FastAPI treating "resumable" as a `job_id` path parameter. Since we're adding to the pipeline router, verify route ordering.
+> **Important — Route ordering:** The route `/resumable` must be registered BEFORE `/jobs/{job_id}` to avoid FastAPI treating "resumable" as a `job_id` path parameter. In `pipeline.py`, place the `@router.get("/resumable")` definition between `start_pipeline` and `list_jobs` (i.e., between `/start` and `/jobs`).
 
 **Step 4: Run test to verify it passes**
 
@@ -598,38 +611,42 @@ git commit -m "feat: add Resumable Books section to pipeline page"
 ## Task 6: Add resume banner to Book Detail page
 
 **Files:**
-- Create: `web/src/components/library/ResumeBanner.tsx`
-- Find and modify: the book detail page in `web/src/app/library/[slug]/page.tsx` (or equivalent)
+- Create: `web/src/components/book/ResumeBanner.tsx`
+- Modify: `web/src/app/books/[id]/page.tsx`
+
+> **Fix (Audit Issue 1):** The book detail page is at `web/src/app/books/[id]/page.tsx`, NOT `library/[slug]/page.tsx`. The URL parameter is `id` (from `params.id`).
 
 **Step 1: Create ResumeBanner component**
 
-Create `web/src/components/library/ResumeBanner.tsx`:
+Create `web/src/components/book/ResumeBanner.tsx`:
 
 A banner component that:
 - Receives `bookId: string` and `bookDetail: BookDetail` props
-- Calculates remaining = total - translated
+- Calculates remaining chapters = total - translated (where translated includes formatted/exported statuses)
 - If remaining > 0, renders a banner:
   - Alert-style box with warning color
   - Text: "⚠ Translation incomplete — {remaining} chapters remaining"
-  - "▶ Resume" button — calls `startPipeline({ book_dir: bookId })` then redirects
+  - "▶ Resume" button — calls `startPipeline({ book_dir: bookId })` then redirects to `/pipeline/${job.id}`
   - "⚙ Resume with options..." button — same inline form as ResumableSection
-- Fetches `getResumableBooks()` to get `last_settings` for pre-fill (filter by book_id)
+- Fetches `getResumableBooks()` to get `last_settings` for pre-fill (filter by `book_id`)
 
 **Step 2: Integrate into book detail page**
 
-Modify the book detail page to render `<ResumeBanner />` at the top, above the chapter table.
+Modify `web/src/app/books/[id]/page.tsx`:
+- Import `ResumeBanner` from `@/components/book/ResumeBanner`
+- Render `<ResumeBanner bookId={bookId} bookDetail={book} />` after the progress bar section (line ~193) and before the action buttons section (line ~196)
 
 **Step 3: Verify in browser**
 
-1. Navigate to a book with incomplete chapters in Library
-2. Verify the banner appears at the top
+1. Navigate to a book with incomplete chapters in Library → click a book
+2. Verify the banner appears between the progress bar and action buttons
 3. Verify "Resume" button works and redirects to pipeline job
 4. Verify "Resume with options" expands the form
 
 **Step 4: Commit**
 
 ```bash
-git add web/src/components/library/ResumeBanner.tsx web/src/app/library/*/page.tsx
+git add web/src/components/book/ResumeBanner.tsx web/src/app/books/\[id\]/page.tsx
 git commit -m "feat: add resume banner to book detail page"
 ```
 
