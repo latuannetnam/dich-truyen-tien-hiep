@@ -9,9 +9,8 @@ from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from dich_truyen.translator.term_scorer import SimpleTermScorer
 
+import structlog
 from pydantic import BaseModel
-from rich.console import Console
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 from dich_truyen.config import TranslationConfig, get_config
 from dich_truyen.translator.glossary import Glossary, generate_glossary_from_samples
@@ -19,7 +18,7 @@ from dich_truyen.translator.llm import LLMClient
 from dich_truyen.translator.style import StyleManager, StyleTemplate
 from dich_truyen.utils.progress import BookProgress, ChapterStatus
 
-console = Console()
+logger = structlog.get_logger()
 
 
 class TranslationResult(BaseModel):
@@ -391,11 +390,11 @@ class TranslationEngine:
             except Exception as e:
                 last_error = e
                 if attempt < max_retries:
-                    console.print(f"[yellow]Polish attempt {attempt + 1} failed: {e}[/yellow]")
+                    logger.warning("polish_retry", attempt=attempt + 1, error=str(e))
                     await asyncio.sleep(2 ** attempt)  # Exponential backoff
 
         # All retries failed - fallback to draft
-        console.print(f"[yellow]Polish failed after {max_retries + 1} attempts, using draft: {last_error}[/yellow]")
+        logger.warning("polish_failed", attempts=max_retries + 1, error=str(last_error))
         return draft_vietnamese
 
     def create_chunks_with_context(self, text: str) -> list[dict]:
@@ -599,7 +598,7 @@ class TranslationEngine:
             ]
 
         if not chapters_to_translate:
-            console.print("[green]All chapters already translated![/green]")
+            logger.info("all_chapters_translated")
             return TranslationResult(
                 total_chapters=len(progress.chapters),
                 translated=0,
@@ -607,7 +606,7 @@ class TranslationEngine:
                 failed=0,
             )
 
-        console.print(f"[blue]Translating {len(chapters_to_translate)} chapters...[/blue]")
+        logger.info("translation_started", chapters=len(chapters_to_translate))
 
         result = TranslationResult(
             total_chapters=len(progress.chapters),
@@ -616,8 +615,8 @@ class TranslationEngine:
             failed=0,
         )
 
-        # Pre-calculate total chunks for accurate progress tracking
-        console.print("[dim]Calculating total chunks...[/dim]")
+        # Pre-calculate total chunks for progress tracking
+        logger.debug("calculating_chunks")
         total_chunks = 0
         for chapter in chapters_to_translate:
             source_files = list(raw_dir.glob(f"{chapter.index:04d}_*.txt"))
@@ -627,87 +626,71 @@ class TranslationEngine:
                 chunks = self.chunk_text(content)
                 total_chunks += len(chunks)
 
-        # Translate with progress bar (tracking chunks not chapters)
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console,
-        ) as pbar:
-            task = pbar.add_task("Translating", total=total_chunks)
+        # Translate chapters with periodic logging
+        for chapter in chapters_to_translate:
+            logger.info("translating_chapter", chapter=chapter.index, title=(chapter.title_cn or "")[:20])
 
-            for chapter in chapters_to_translate:
-                chapter_desc = f"Ch.{chapter.index}: {chapter.title_cn[:20]}..."
-                pbar.update(task, description=chapter_desc)
+            try:
+                # Find source file
+                source_files = list(raw_dir.glob(f"{chapter.index:04d}_*.txt"))
+                if not source_files:
+                    raise FileNotFoundError(f"Source file not found for chapter {chapter.index}")
 
-                try:
-                    # Find source file
-                    source_files = list(raw_dir.glob(f"{chapter.index:04d}_*.txt"))
-                    if not source_files:
-                        raise FileNotFoundError(f"Source file not found for chapter {chapter.index}")
+                source_path = source_files[0]
+                # Use simple naming: chapter_number.txt
+                output_path = translated_dir / f"{chapter.index}.txt"
 
-                    source_path = source_files[0]
-                    # Use simple naming: chapter_number.txt
-                    output_path = translated_dir / f"{chapter.index}.txt"
+                # Translate chapter content
+                await self.translate_chapter(source_path, output_path)
 
-                    # Progress callback for chunk-level updates
-                    def update_chunk_progress(chunk_idx, total_chunks_in_chapter, status=""):
-                        desc = f"Ch.{chapter.index}: {chapter.title_cn[:12]}... {status} [{chunk_idx}/{total_chunks_in_chapter}]"
-                        pbar.update(task, description=desc)
-                        # Advance progress bar by 1 for each completed chunk
-                        if "done" in status or status.startswith("[") and "translating" not in status:
-                            pbar.advance(task, 1)
-
-                    # Translate chapter content with chunk progress
-                    await self.translate_chapter(source_path, output_path, update_chunk_progress)
-
-                    # Translate chapter title if not already done
-                    if chapter.title_cn and not chapter.title_vi:
-                        chapter.title_vi = await self.llm.translate_title(
-                            chapter.title_cn, "chapter"
-                        )
-
-                    # Progressive glossary: extract new terms from this chapter
-                    if self.config.progressive_glossary and self.glossary:
-                        from dich_truyen.translator.glossary import extract_new_terms_from_chapter
-                        with open(source_path, "r", encoding="utf-8") as f:
-                            chapter_content = f.read()
-                        new_terms = await extract_new_terms_from_chapter(
-                            chapter_content, self.glossary, max_new_terms=3
-                        )
-                        if new_terms:
-                            for term in new_terms:
-                                self.glossary.add(term)
-                            console.print(f"[dim]  +{len(new_terms)} new glossary terms[/dim]")
-
-                    # Update status
-                    progress.update_chapter_status(chapter.index, ChapterStatus.TRANSLATED)
-                    result.translated += 1
-
-                except Exception as e:
-                    error_msg = f"Chapter {chapter.index}: {str(e)}"
-                    result.errors.append(error_msg)
-                    result.failed += 1
-                    progress.update_chapter_status(
-                        chapter.index, ChapterStatus.ERROR, str(e)
+                # Translate chapter title if not already done
+                if chapter.title_cn and not chapter.title_vi:
+                    chapter.title_vi = await self.llm.translate_title(
+                        chapter.title_cn, "chapter"
                     )
-                    console.print(f"[red]Error: {error_msg}[/red]")
 
-                # Save progress after each chapter to prevent data loss
-                progress.save(book_dir)
-                
-                # Save updated glossary if progressive mode enabled
+                # Progressive glossary: extract new terms from this chapter
                 if self.config.progressive_glossary and self.glossary:
-                    self.glossary.save(book_dir)
+                    from dich_truyen.translator.glossary import extract_new_terms_from_chapter
+                    with open(source_path, "r", encoding="utf-8") as f:
+                        chapter_content = f.read()
+                    new_terms = await extract_new_terms_from_chapter(
+                        chapter_content, self.glossary, max_new_terms=3
+                    )
+                    if new_terms:
+                        for term in new_terms:
+                            self.glossary.add(term)
+                        logger.debug("glossary_terms_added", count=len(new_terms))
+
+                # Update status
+                progress.update_chapter_status(chapter.index, ChapterStatus.TRANSLATED)
+                result.translated += 1
+
+            except Exception as e:
+                error_msg = f"Chapter {chapter.index}: {str(e)}"
+                result.errors.append(error_msg)
+                result.failed += 1
+                progress.update_chapter_status(
+                    chapter.index, ChapterStatus.ERROR, str(e)
+                )
+                logger.error("chapter_translation_error", chapter=chapter.index, error=str(e))
+
+            # Save progress after each chapter to prevent data loss
+            progress.save(book_dir)
+
+            # Save updated glossary if progressive mode enabled
+            if self.config.progressive_glossary and self.glossary:
+                self.glossary.save(book_dir)
 
         # Final save
         progress.save(book_dir)
 
-        console.print(f"\n[green]Translation complete![/green]")
-        console.print(f"  Translated: {result.translated}")
-        console.print(f"  Skipped: {result.skipped}")
-        console.print(f"  Failed: {result.failed}")
+        logger.info(
+            "translation_complete",
+            translated=result.translated,
+            skipped=result.skipped,
+            failed=result.failed,
+        )
 
         return result
 
@@ -740,9 +723,9 @@ async def setup_translation(
     style_manager = StyleManager()
     try:
         style = style_manager.load(style_name)
-        console.print(f"[green]Loaded style: {style_name}[/green]")
+        logger.info("style_loaded", name=style_name)
     except ValueError:
-        console.print(f"[yellow]Style not found: {style_name}, using default[/yellow]")
+        logger.warning("style_not_found", name=style_name, fallback="tien_hiep")
         style = style_manager.load("tien_hiep")
 
     # Load or create glossary
@@ -753,7 +736,7 @@ async def setup_translation(
 
     # Auto-generate glossary if empty and enabled
     if auto_glossary and len(glossary) == 0:
-        console.print("[blue]Generating glossary from sample chapters...[/blue]")
+        logger.info("generating_glossary")
 
         # Get config values
         config = get_config().translation
@@ -771,10 +754,10 @@ async def setup_translation(
         if random_sample and len(all_files) > sample_chapter_count:
             import random
             sample_files = random.sample(all_files, sample_chapter_count)
-            console.print(f"[dim]  Randomly selected {sample_chapter_count} chapters from {len(all_files)} available[/dim]")
+            logger.debug("glossary_sampling", method="random", selected=sample_chapter_count, available=len(all_files))
         else:
             sample_files = all_files[:sample_chapter_count]
-            console.print(f"[dim]  Using first {len(sample_files)} chapters[/dim]")
+            logger.debug("glossary_sampling", method="sequential", selected=len(sample_files))
         
         samples = []
         for txt_file in sample_files:
@@ -792,23 +775,23 @@ async def setup_translation(
                 max_entries=max_entries,
             )
             glossary.save(book_dir)
-            console.print(f"[green]Generated {len(glossary)} glossary entries[/green]")
+            logger.info("glossary_generated", entries=len(glossary))
 
     # Translate book metadata if not already done
     progress = BookProgress.load(book_dir)
     if progress and not progress.title_vi:
-        console.print("[blue]Translating book metadata...[/blue]")
+        logger.info("translating_metadata")
         llm = LLMClient(task="translate")
         
         # Translate book title
         if progress.title:
             progress.title_vi = await llm.translate_title(progress.title, "book")
-            console.print(f"  Title: {progress.title} → {progress.title_vi}")
-        
+            logger.debug("metadata_translated", field="title", original=progress.title, translated=progress.title_vi)
+
         # Translate author name
         if progress.author:
             progress.author_vi = await llm.translate_title(progress.author, "author")
-            console.print(f"  Author: {progress.author} → {progress.author_vi}")
+            logger.debug("metadata_translated", field="author", original=progress.author, translated=progress.author_vi)
         
         progress.save(book_dir)
 
@@ -817,8 +800,8 @@ async def setup_translation(
     if len(glossary) > 0:
         from dich_truyen.translator.term_scorer import SimpleTermScorer
         
-        console.print("[dim]Initializing TF-IDF scorer for glossary selection...[/dim]")
-        
+        logger.debug("tfidf_scorer_init")
+
         # Read all chapter contents for IDF calculation
         raw_dir = book_dir / "raw"
         all_files = sorted(raw_dir.glob("*.txt"))
@@ -829,16 +812,16 @@ async def setup_translation(
                     documents.append(f.read())
             except Exception:
                 pass  # Skip files that can't be read
-        
+
         if documents:
             # Extract glossary terms
             terms = [entry.chinese for entry in glossary.entries]
-            
+
             # Fit the scorer
             term_scorer = SimpleTermScorer()
             term_scorer.fit(documents, terms)
-            
-            console.print(f"[dim]  TF-IDF scorer fitted with {len(documents)} chapters, {len(terms)} terms[/dim]")
+
+            logger.debug("tfidf_scorer_fitted", chapters=len(documents), terms=len(terms))
 
     return TranslationEngine(
         style=style,
@@ -872,17 +855,17 @@ async def translate_chapter_titles(book_dir: Path, chapters_spec: Optional[str] 
         chapters_to_translate = [c for c in all_chapters if not c.title_vi]
 
     if not chapters_to_translate:
-        console.print("[green]All chapter titles already translated![/green]")
+        logger.info("all_chapter_titles_translated")
         return
 
-    console.print(f"[blue]Translating {len(chapters_to_translate)} chapter titles...[/blue]")
-    
+    logger.info("translating_chapter_titles", chapters=len(chapters_to_translate))
+
     llm = LLMClient(task="translate")
-    
+
     for chapter in chapters_to_translate:
         if chapter.title_cn:
             chapter.title_vi = await llm.translate_title(chapter.title_cn, "chapter")
-            console.print(f"[dim]  Ch.{chapter.index}: {chapter.title_cn} → {chapter.title_vi}[/dim]")
-    
+            logger.debug("chapter_title_translated", chapter=chapter.index, original=chapter.title_cn, translated=chapter.title_vi)
+
     progress.save(book_dir)
-    console.print("[green]Chapter titles translated![/green]")
+    logger.info("chapter_titles_complete")
