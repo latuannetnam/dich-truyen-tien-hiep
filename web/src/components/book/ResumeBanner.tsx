@@ -2,19 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   AlertTriangle,
   RotateCcw,
   Settings2,
   ChevronDown,
   ChevronUp,
+  Activity,
 } from "lucide-react";
 import {
   getResumableBooks,
+  getPipelineJobs,
   startPipeline,
   getStyles,
 } from "@/lib/api";
-import type { BookDetail, ResumableBook, StyleSummary } from "@/lib/types";
+import type { BookDetail, ResumableBook, PipelineJob, StyleSummary } from "@/lib/types";
 
 interface ResumeBannerProps {
   bookId: string;
@@ -24,6 +27,7 @@ interface ResumeBannerProps {
 export default function ResumeBanner({ bookId, bookDetail }: ResumeBannerProps) {
   const router = useRouter();
   const [resumableInfo, setResumableInfo] = useState<ResumableBook | null>(null);
+  const [activeJob, setActiveJob] = useState<PipelineJob | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const [resuming, setResuming] = useState(false);
 
@@ -33,7 +37,7 @@ export default function ResumeBanner({ bookId, bookDetail }: ResumeBannerProps) 
   ).length;
   const remaining = bookDetail.chapters.length - translated;
 
-  // Fetch resumable info for pre-fill settings
+  // Fetch resumable info and check for active jobs
   useEffect(() => {
     getResumableBooks()
       .then((books) => {
@@ -41,9 +45,51 @@ export default function ResumeBanner({ bookId, bookDetail }: ResumeBannerProps) 
         if (match) setResumableInfo(match);
       })
       .catch(() => {});
+
+    getPipelineJobs()
+      .then((jobs) => {
+        const active = jobs.find(
+          (j) =>
+            (j.status === "running" || j.status === "pending") &&
+            j.book_dir?.includes(bookId)
+        );
+        if (active) setActiveJob(active);
+      })
+      .catch(() => {});
   }, [bookId]);
 
   if (remaining <= 0) return null;
+
+  // If there's an active job, show "View Active Job" banner instead
+  if (activeJob) {
+    return (
+      <div className="mb-6 bg-[var(--color-primary-subtle)] border border-[var(--color-primary)]/30 rounded-xl p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <Activity size={18} className="text-[var(--color-primary)] shrink-0 animate-pulse" />
+            <p className="text-sm text-[var(--text-primary)]">
+              Translation in progress —{" "}
+              <span className="font-medium font-[var(--font-fira-code)]">
+                {remaining}
+              </span>{" "}
+              chapters remaining
+            </p>
+          </div>
+          <Link
+            href={`/pipeline/${activeJob.id}`}
+            className="
+              inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium
+              bg-[var(--color-primary)] text-white
+              hover:bg-[var(--color-primary-hover)] transition-all duration-150
+            "
+          >
+            <Activity size={12} />
+            View Active Job
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const handleResume = async (overrides?: Record<string, unknown>) => {
     setResuming(true);
