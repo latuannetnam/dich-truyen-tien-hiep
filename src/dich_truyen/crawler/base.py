@@ -4,12 +4,12 @@ import asyncio
 from typing import Optional
 
 import httpx
-from rich.console import Console
+import structlog
 
 from dich_truyen.config import CrawlerConfig, get_config
 from dich_truyen.utils.encoding import decode_content, detect_encoding
 
-console = Console()
+logger = structlog.get_logger()
 
 
 class BaseCrawler:
@@ -65,13 +65,13 @@ class BaseCrawler:
 
             except httpx.HTTPStatusError as e:
                 last_error = e
-                console.print(f"[yellow]HTTP {e.response.status_code} for {url}[/yellow]")
+                logger.warning("http_error", status=e.response.status_code, url=url)
                 if e.response.status_code in (403, 404, 410):
                     raise  # Don't retry these
 
             except (httpx.TimeoutException, httpx.ConnectError) as e:
                 last_error = e
-                console.print(f"[yellow]Attempt {attempt + 1} failed: {e}[/yellow]")
+                logger.warning("fetch_retry", attempt=attempt + 1, error=str(e), url=url)
 
             if attempt < self.config.max_retries:
                 delay = self.config.delay_ms / 1000 * (attempt + 1)
