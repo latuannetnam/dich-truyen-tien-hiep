@@ -10,11 +10,11 @@ if TYPE_CHECKING:
     from dich_truyen.translator.style import StyleTemplate
 
 from pydantic import BaseModel, Field
-from rich.console import Console
+import structlog
 
 from dich_truyen.config import get_config
 
-console = Console()
+logger = structlog.get_logger()
 
 
 class GlossaryEntry(BaseModel):
@@ -297,7 +297,7 @@ class Glossary:
                     )
                 )
 
-        console.print(f"[green]Imported {len(entries)} entries from {path}[/green]")
+        logger.info("glossary_imported", entries=len(entries), path=str(path))
         return cls(entries)
 
     def save(self, book_dir: Path) -> None:
@@ -411,13 +411,13 @@ async def generate_glossary_from_samples(
     num_batches = (len(sample_texts) + BATCH_SIZE - 1) // BATCH_SIZE
     entries_per_batch = max(10, min_entries // max(1, num_batches))
     
-    console.print(f"[dim]Processing {len(sample_texts)} samples in {num_batches} batches...[/dim]")
+    logger.info("glossary_batch_start", samples=len(sample_texts), batches=num_batches)
     
     for batch_idx in range(0, len(sample_texts), BATCH_SIZE):
         batch = sample_texts[batch_idx:batch_idx + BATCH_SIZE]
         batch_num = batch_idx // BATCH_SIZE + 1
         
-        console.print(f"[dim]  Batch {batch_num}/{num_batches}: analyzing {len(batch)} samples...[/dim]")
+        logger.debug("glossary_batch", batch=batch_num, total=num_batches, samples=len(batch))
         
         # Combine batch texts
         combined = "\n\n---\n\n".join(batch)
@@ -442,13 +442,13 @@ async def generate_glossary_from_samples(
                     entries_data = json.loads(json_match.group())
                     batch_entries = [GlossaryEntry.model_validate(e) for e in entries_data]
                     all_entries.extend(batch_entries)
-                    console.print(f"[dim]    Found {len(batch_entries)} terms[/dim]")
+                    logger.debug("glossary_batch_terms", batch=batch_num, terms=len(batch_entries))
                 except (json.JSONDecodeError, Exception) as e:
-                    console.print(f"[yellow]    Failed to parse batch {batch_num}: {e}[/yellow]")
+                    logger.warning("glossary_batch_parse_error", batch=batch_num, error=str(e))
             else:
-                console.print(f"[yellow]    No JSON found in batch {batch_num} response[/yellow]")
+                logger.warning("glossary_batch_no_json", batch=batch_num)
         except Exception as e:
-            console.print(f"[red]    Batch {batch_num} failed: {e}[/red]")
+            logger.error("glossary_batch_failed", batch=batch_num, error=str(e))
             continue
 
     # Deduplicate entries (keep first occurrence)
@@ -459,12 +459,12 @@ async def generate_glossary_from_samples(
             seen.add(entry.chinese)
             unique_entries.append(entry)
     
-    console.print(f"[green]Generated {len(unique_entries)} unique glossary entries[/green]")
+    logger.info("glossary_generated", unique_entries=len(unique_entries))
 
     # Limit to max_entries
     if len(unique_entries) > max_entries:
         unique_entries = unique_entries[:max_entries]
-        console.print(f"[dim]  Limited to {max_entries} entries[/dim]")
+        logger.debug("glossary_limited", max_entries=max_entries)
 
     # Create or merge with existing
     if existing_glossary:
