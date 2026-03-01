@@ -45,6 +45,9 @@ tests/
 ├── test_pipeline_service.py # PipelineService job lifecycle + save/scan settings tests
 ├── test_glossary_service.py # GlossaryService CRUD unit tests
 ├── test_services.py       # BookService + StyleService unit tests
+├── test_style_service.py  # StyleService CRUD unit tests (create, update, delete, duplicate, import, export)
+├── test_style_api.py      # Style API route tests (HTTP codes, CRUD, import validate-only)
+├── test_style_manager.py  # StyleManager core tests (save, delete, shadow, cache)
 ├── test_crawler.py
 ├── test_translator.py
 ├── test_glossary.py

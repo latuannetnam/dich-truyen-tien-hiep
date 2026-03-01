@@ -64,10 +64,15 @@ Quản lý glossary trực tiếp trên giao diện, mỗi sách có glossary ri
 
 ### 🎨 Style Manager
 
-Duyệt và xem chi tiết các style template:
-- **Card grid**: Hiển thị tên, mô tả, tone badge, built-in indicator
+Quản lý đầy đủ style templates (CRUD + LLM generation + import/export):
+- **Card grid**: Hiển thị tên, mô tả, tone badge, type badge (built-in/custom/customized)
 - **Detail panel**: Slide-in panel hiển thị guidelines, vocabulary, examples
-- **Search/filter**: Tìm kiếm theo tên style
+- **Create/Edit**: Form tạo mới hoặc chỉnh sửa style với inline validation
+- **Customize built-in**: Shadow built-in styles với customizations riêng
+- **AI Generation**: Tạo style từ mô tả bằng LLM (✨ Generate with AI)
+- **Import/Export YAML**: Import file YAML (validate → review → save), export bất kỳ style
+- **Search/filter**: Tìm kiếm theo tên, mô tả, tone
+- **Accessibility**: Focus trap, aria-live validation, keyboard shortcuts (Escape, Ctrl+S)
 
 <!-- TODO: Add screenshot -->
 <!-- ![Style Manager](docs/screenshots/style-manager.png) -->
@@ -182,9 +187,11 @@ src/
 │   ├── dashboard/          # StatCard, ActiveJobs
 │   ├── pipeline/           # ProgressPanel, WorkerCards, EventLog, ResumableSection
 │   ├── wizard/             # WizardSteps
+│   ├── styles/            # StyleEditorForm, ConfirmDialog
 │   └── ui/                 # ToastProvider, ErrorBoundary, EmptyState
 ├── hooks/
-│   └── useWebSocket.ts     # Pipeline WebSocket hook
+│   ├── useWebSocket.ts     # Pipeline WebSocket hook
+│   └── useFocusTrap.ts     # Focus trap for modal panels
 └── lib/
     ├── api.ts              # API client (books, pipeline, settings, glossary, styles, export)
     └── types.ts            # TypeScript interfaces
@@ -218,6 +225,13 @@ Requests đến `/api/*` được proxy sang `http://127.0.0.1:8000/api/*` qua c
 | POST | `/api/v1/settings/test-connection` | Test API connection |
 | GET | `/api/v1/styles` | List styles |
 | GET | `/api/v1/styles/:name` | Get style detail |
+| POST | `/api/v1/styles` | Create new custom style |
+| PUT | `/api/v1/styles/:name` | Update custom style |
+| DELETE | `/api/v1/styles/:name` | Delete custom style |
+| POST | `/api/v1/styles/:name/duplicate` | Duplicate/shadow style |
+| POST | `/api/v1/styles/generate` | LLM-generate style (not saved) |
+| POST | `/api/v1/styles/import` | Validate YAML import (not saved) |
+| GET | `/api/v1/styles/:name/export` | Export as YAML download |
 | GET | `/api/v1/export/formats` | Supported export formats |
 | GET | `/api/v1/books/:id/export` | Export status |
 | POST | `/api/v1/books/:id/export` | Start export |
