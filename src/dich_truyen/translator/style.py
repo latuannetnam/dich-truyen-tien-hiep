@@ -253,7 +253,7 @@ class StyleManager:
         self._cache: dict[str, StyleTemplate] = {}
 
     def list_available(self) -> list[str]:
-        """List all available style names.
+        """List all available style names (internal names from YAML content).
 
         Returns:
             List of style names
@@ -262,9 +262,14 @@ class StyleManager:
 
         if self.styles_dir and self.styles_dir.exists():
             for yaml_file in self.styles_dir.glob("*.yaml"):
-                style_name = yaml_file.stem
-                if style_name not in styles:
-                    styles.append(style_name)
+                # Use internal name from YAML content, not filename
+                try:
+                    template = StyleTemplate.from_yaml(yaml_file)
+                    internal_name = template.name
+                except Exception:
+                    internal_name = yaml_file.stem
+                if internal_name not in styles:
+                    styles.append(internal_name)
 
         return sorted(styles)
 
@@ -285,13 +290,12 @@ class StyleManager:
             return self._cache[name]
 
         # Check custom styles directory FIRST (allows overriding built-in styles)
-        if self.styles_dir:
-            yaml_path = self.styles_dir / f"{name}.yaml"
-            if yaml_path.exists():
-                logger.debug("style_loaded", name=name, source="custom", path=str(yaml_path))
-                style = StyleTemplate.from_yaml(yaml_path)
-                self._cache[name] = style
-                return style
+        custom_path = self._find_custom_file(name)
+        if custom_path:
+            logger.debug("style_loaded", name=name, source="custom", path=str(custom_path))
+            style = StyleTemplate.from_yaml(custom_path)
+            self._cache[name] = style
+            return style
 
         # Fall back to built-in
         if name in BUILT_IN_STYLES:
@@ -324,15 +328,15 @@ class StyleManager:
         """Delete a custom style template.
 
         Args:
-            name: Style name to delete.
+            name: Style name (internal name or filename stem).
 
         Raises:
             ValueError: If style is built-in or not found.
         """
         if name in BUILT_IN_STYLES and not self._has_custom_file(name):
             raise ValueError(f"Cannot delete built-in style: {name}")
-        path = self.styles_dir / f"{name}.yaml"
-        if not path.exists():
+        path = self._find_custom_file(name)
+        if not path:
             raise ValueError(f"Custom style file not found: {name}")
         path.unlink()
         self.invalidate_cache(name)
@@ -370,7 +374,38 @@ class StyleManager:
 
     def _has_custom_file(self, name: str) -> bool:
         """Check if a custom YAML file exists for this name."""
-        return (self.styles_dir / f"{name}.yaml").exists()
+        return self._find_custom_file(name) is not None
+
+    def _find_custom_file(self, name: str) -> Path | None:
+        """Find a custom YAML file by name (filename or internal name).
+
+        Tries direct filename match first, then scans YAML files
+        for matching internal 'name' field.
+
+        Args:
+            name: Style name to search for.
+
+        Returns:
+            Path to YAML file or None.
+        """
+        if not self.styles_dir or not self.styles_dir.exists():
+            return None
+
+        # 1. Direct filename match
+        direct_path = self.styles_dir / f"{name}.yaml"
+        if direct_path.exists():
+            return direct_path
+
+        # 2. Scan by internal name field
+        for yaml_file in self.styles_dir.glob("*.yaml"):
+            try:
+                template = StyleTemplate.from_yaml(yaml_file)
+                if template.name == name:
+                    return yaml_file
+            except Exception:
+                continue
+
+        return None
 
 
 STYLE_GENERATION_PROMPT = """Tạo một style template dịch thuật tiểu thuyết dựa trên mô tả sau:
