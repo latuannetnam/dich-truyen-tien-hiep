@@ -316,11 +316,16 @@ class StyleManager:
     def save(self, template: StyleTemplate) -> None:
         """Save a style template to the custom styles directory.
 
+        If a file already exists for this template name (even with a different
+        filename), overwrites it in place rather than creating a new file.
+
         Args:
             template: StyleTemplate to save.
         """
         self.styles_dir.mkdir(parents=True, exist_ok=True)
-        path = self.styles_dir / f"{template.name}.yaml"
+        # Overwrite existing file if found (handles filename != internal name)
+        existing = self._find_custom_file(template.name)
+        path = existing if existing else self.styles_dir / f"{template.name}.yaml"
         template.to_yaml(path)
         self.invalidate_cache(template.name)
 
