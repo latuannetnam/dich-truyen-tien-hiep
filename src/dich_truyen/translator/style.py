@@ -313,6 +313,69 @@ class StyleManager:
         """
         return list(BUILT_IN_STYLES.keys())
 
+    def save(self, template: StyleTemplate) -> None:
+        """Save a style template to the custom styles directory.
+
+        Args:
+            template: StyleTemplate to save.
+        """
+        self.styles_dir.mkdir(parents=True, exist_ok=True)
+        path = self.styles_dir / f"{template.name}.yaml"
+        template.to_yaml(path)
+        self.invalidate_cache(template.name)
+
+    def delete(self, name: str) -> None:
+        """Delete a custom style template.
+
+        Args:
+            name: Style name to delete.
+
+        Raises:
+            ValueError: If style is built-in or not found.
+        """
+        if name in BUILT_IN_STYLES and not self._has_custom_file(name):
+            raise ValueError(f"Cannot delete built-in style: {name}")
+        path = self.styles_dir / f"{name}.yaml"
+        if not path.exists():
+            raise ValueError(f"Custom style file not found: {name}")
+        path.unlink()
+        self.invalidate_cache(name)
+        logger.info("style_deleted", name=name)
+
+    def invalidate_cache(self, name: str) -> None:
+        """Remove a style from the internal cache.
+
+        Args:
+            name: Style name to invalidate.
+        """
+        self._cache.pop(name, None)
+
+    def is_builtin(self, name: str) -> bool:
+        """Check if a style name is a built-in style.
+
+        Args:
+            name: Style name.
+
+        Returns:
+            True if built-in.
+        """
+        return name in BUILT_IN_STYLES
+
+    def is_shadow(self, name: str) -> bool:
+        """Check if a custom style shadows a built-in.
+
+        Args:
+            name: Style name.
+
+        Returns:
+            True if both built-in and custom file exist.
+        """
+        return name in BUILT_IN_STYLES and self._has_custom_file(name)
+
+    def _has_custom_file(self, name: str) -> bool:
+        """Check if a custom YAML file exists for this name."""
+        return (self.styles_dir / f"{name}.yaml").exists()
+
 
 STYLE_GENERATION_PROMPT = """Tạo một style template dịch thuật tiểu thuyết dựa trên mô tả sau:
 
