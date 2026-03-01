@@ -1,5 +1,4 @@
 # In Progress
-- Check ruff linting: uv run ruff check
 - i18n for web UI: support English and Vietnamese
 - UI Theme: Dark and Light mode
 
@@ -9,3 +8,4 @@
 - Refactor CLI logging: use linear log instead of Rich log for ease of debugging with Web UI
 - Full pipeline resume: continue pending pipeline - crawling, translating, and exporting (the same as CLI pipeline)
 - Style Manager Editor: Can Edit/Create/Delete styles
+- Check ruff linting: 

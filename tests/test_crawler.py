@@ -1,31 +1,30 @@
 """Unit tests for the crawler module."""
 
 import os
+
 import pytest
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 from dotenv import load_dotenv
 
 # Load .env for API key check
 load_dotenv()
 
-from dich_truyen.crawler.base import BaseCrawler
-from dich_truyen.crawler.pattern import PatternDiscovery, DiscoveredBook
-from dich_truyen.crawler.downloader import ChapterDownloader, slugify
-from dich_truyen.utils.encoding import detect_encoding, decode_content
-from dich_truyen.utils.progress import (
+from dich_truyen.config import CrawlerConfig  # noqa: E402
+from dich_truyen.crawler.base import BaseCrawler  # noqa: E402
+from dich_truyen.crawler.downloader import ChapterDownloader, slugify  # noqa: E402
+from dich_truyen.crawler.pattern import PatternDiscovery  # noqa: E402
+from dich_truyen.utils.encoding import decode_content, detect_encoding  # noqa: E402
+from dich_truyen.utils.progress import (  # noqa: E402
     BookProgress,
     Chapter,
     ChapterStatus,
     parse_chapter_range,
 )
-from dich_truyen.config import CrawlerConfig
-
 
 # Sample URLs - use TEST_URL from env if available, else use defaults
 SAMPLE_URL = os.getenv("TEST_URL", "https://www.piaotia.com/html/8/8717/index.html")
 SAMPLE_CHAPTER_URL = "https://www.piaotia.com/html/8/8717/5588734.html"
 SAMPLE_CHAPTERS = os.getenv("TEST_CHAPTERS", "1-10")
+
 
 # Check if OpenAI API is configured for integration tests
 def _has_openai_api():
@@ -33,14 +32,14 @@ def _has_openai_api():
     api_key = os.getenv("OPENAI_API_KEY", "")
     return bool(api_key) and not api_key.startswith("sk-your")
 
+
 requires_openai = pytest.mark.skipif(
-    not _has_openai_api(),
-    reason="Requires OpenAI API key (set OPENAI_API_KEY)"
+    not _has_openai_api(), reason="Requires OpenAI API key (set OPENAI_API_KEY)"
 )
 
 requires_network = pytest.mark.skipif(
     os.getenv("SKIP_NETWORK_TESTS", "").lower() == "true",
-    reason="Network tests disabled (SKIP_NETWORK_TESTS=true)"
+    reason="Network tests disabled (SKIP_NETWORK_TESTS=true)",
 )
 
 
@@ -175,7 +174,7 @@ class TestBookProgress:
         progress = BookProgress(url=SAMPLE_URL)
         chapter = Chapter(index=1, id="1", title_cn="Test", url="http://test.com")
         progress.chapters.append(chapter)
-        
+
         result = progress.get_chapter_by_index(1)
         assert result is not None
         assert result.title_cn == "Test"
@@ -185,7 +184,7 @@ class TestBookProgress:
         progress = BookProgress(url=SAMPLE_URL)
         chapter = Chapter(index=1, id="1", title_cn="Test", url="http://test.com")
         progress.chapters.append(chapter)
-        
+
         progress.update_chapter_status(1, ChapterStatus.CRAWLED)
         assert progress.chapters[0].status == ChapterStatus.CRAWLED
         assert progress.chapters[0].crawled_at is not None
@@ -194,11 +193,29 @@ class TestBookProgress:
         """Test getting pending chapters."""
         progress = BookProgress(url=SAMPLE_URL)
         progress.chapters = [
-            Chapter(index=1, id="1", title_cn="Ch1", url="http://test.com/1", status=ChapterStatus.PENDING),
-            Chapter(index=2, id="2", title_cn="Ch2", url="http://test.com/2", status=ChapterStatus.CRAWLED),
-            Chapter(index=3, id="3", title_cn="Ch3", url="http://test.com/3", status=ChapterStatus.PENDING),
+            Chapter(
+                index=1,
+                id="1",
+                title_cn="Ch1",
+                url="http://test.com/1",
+                status=ChapterStatus.PENDING,
+            ),
+            Chapter(
+                index=2,
+                id="2",
+                title_cn="Ch2",
+                url="http://test.com/2",
+                status=ChapterStatus.CRAWLED,
+            ),
+            Chapter(
+                index=3,
+                id="3",
+                title_cn="Ch3",
+                url="http://test.com/3",
+                status=ChapterStatus.PENDING,
+            ),
         ]
-        
+
         pending = progress.get_pending_chapters("crawl")
         assert len(pending) == 2
 
@@ -209,14 +226,12 @@ class TestBookProgress:
             title="剑来",
             author="烽火戏诸侯",
         )
-        progress.chapters.append(
-            Chapter(index=1, id="1", title_cn="Test", url="http://test.com")
-        )
-        
+        progress.chapters.append(Chapter(index=1, id="1", title_cn="Test", url="http://test.com"))
+
         # Save
         progress.save(tmp_path)
         assert (tmp_path / "book.json").exists()
-        
+
         # Load
         loaded = BookProgress.load(tmp_path)
         assert loaded is not None
@@ -257,11 +272,11 @@ class TestPatternDiscovery:
     def test_extract_chapter_id(self):
         """Test chapter ID extraction from URL."""
         discovery = PatternDiscovery()
-        
+
         # Test numeric ID
         result = discovery._extract_chapter_id("5588734.html")
         assert result == "5588734"
-        
+
         # Test with path
         result = discovery._extract_chapter_id("/html/8/8717/5588734.html")
         assert result == "5588734"
@@ -269,15 +284,15 @@ class TestPatternDiscovery:
     def test_parse_json_response(self):
         """Test JSON parsing from LLM response."""
         discovery = PatternDiscovery()
-        
+
         # Direct JSON
         result = discovery._parse_json_response('{"title": "Test"}')
         assert result["title"] == "Test"
-        
+
         # Markdown code block
         result = discovery._parse_json_response('```json\n{"title": "Test"}\n```')
         assert result["title"] == "Test"
-        
+
         # Invalid JSON
         result = discovery._parse_json_response("not json at all")
         assert result == {}
@@ -285,7 +300,7 @@ class TestPatternDiscovery:
     def test_extract_chapters_from_html(self):
         """Test chapter extraction from HTML."""
         discovery = PatternDiscovery()
-        
+
         html = """
         <div class="centent">
             <ul>
@@ -295,11 +310,11 @@ class TestPatternDiscovery:
             </ul>
         </div>
         """
-        
+
         chapters = discovery.extract_chapters_from_html(
             html, "http://example.com/", ".centent ul li a"
         )
-        
+
         assert len(chapters) == 3
         assert chapters[0].title == "Chapter 1"
         assert chapters[0].url == "http://example.com/001.html"
@@ -307,12 +322,12 @@ class TestPatternDiscovery:
     def test_extract_text_with_breaks(self):
         """Test text extraction preserving paragraph breaks."""
         from bs4 import BeautifulSoup
-        
+
         discovery = PatternDiscovery()
-        
+
         html = "<div>Line 1<br>Line 2<p>Paragraph</p></div>"
         soup = BeautifulSoup(html, "lxml")
-        
+
         result = discovery._extract_text_with_breaks(soup.div)
         assert "Line 1" in result
         assert "Line 2" in result
@@ -331,8 +346,8 @@ class TestChapterDownloader:
     def test_downloader_creates_directories(self, tmp_path):
         """Test that downloader creates required directories."""
         book_dir = tmp_path / "new-book"
-        downloader = ChapterDownloader(book_dir)
-        
+        _downloader = ChapterDownloader(book_dir)
+
         assert book_dir.exists()
         assert (book_dir / "raw").exists()
 
@@ -345,10 +360,10 @@ class TestChapterDownloader:
             title="Test Book",
         )
         progress.save(book_dir)
-        
-        downloader = ChapterDownloader(book_dir)
+
+        _downloader = ChapterDownloader(book_dir)
         loaded = BookProgress.load(book_dir)
-        
+
         assert loaded is not None
         assert loaded.title == "Test Book"
 
@@ -373,9 +388,9 @@ class TestCrawlerIntegration:
         """Test full pattern discovery."""
         async with BaseCrawler() as crawler:
             html = await crawler.fetch(SAMPLE_URL)
-        
+
         discovery = PatternDiscovery()
         result = await discovery.analyze_index_page(html, SAMPLE_URL)
-        
+
         assert result.title != ""
         assert result.patterns.chapter_selector != ""

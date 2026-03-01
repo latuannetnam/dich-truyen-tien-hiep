@@ -82,4 +82,3 @@ def create_app(
         return {"status": "ok", "version": __version__}
 
     return app
-

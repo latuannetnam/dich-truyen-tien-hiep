@@ -3,9 +3,9 @@
 from pathlib import Path
 from typing import Optional
 
+import structlog
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import structlog
 
 # ---------------------------------------------------------------------------
 # Sub-config models
@@ -60,7 +60,9 @@ class CrawlerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="CRAWLER_")
 
-    delay_ms: int = Field(default=1000, description="Delay between HTTP requests in ms (rate limiting)")
+    delay_ms: int = Field(
+        default=1000, description="Delay between HTTP requests in ms (rate limiting)"
+    )
     max_retries: int = Field(default=3, description="Max retry attempts")
     timeout_seconds: int = Field(default=30, description="Request timeout in seconds")
     user_agent: str = Field(
@@ -141,9 +143,7 @@ class PipelineConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="PIPELINE_")
 
-    translator_workers: int = Field(
-        default=3, description="Number of parallel translation workers"
-    )
+    translator_workers: int = Field(default=3, description="Number of parallel translation workers")
     queue_size: int = Field(
         default=10, description="Max chapters buffered between crawl and translate"
     )

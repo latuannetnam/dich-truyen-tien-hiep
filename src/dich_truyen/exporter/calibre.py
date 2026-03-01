@@ -5,8 +5,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel
 import structlog
+from pydantic import BaseModel
 
 from dich_truyen.config import CalibreConfig, get_config
 from dich_truyen.formatter.metadata import BookMetadataManager
@@ -104,12 +104,15 @@ class CalibreExporter:
             cmd.extend(metadata.to_calibre_args())
 
         # Add some sensible defaults
-        cmd.extend([
-            "--verbose",  # Output detailed conversion info
-            "--smarten-punctuation",
-            "--no-chapters-in-toc",
-            "--level1-toc", "//h:h2[@class='chapter-title']",
-        ])
+        cmd.extend(
+            [
+                "--verbose",  # Output detailed conversion info
+                "--smarten-punctuation",
+                "--no-chapters-in-toc",
+                "--level1-toc",
+                "//h:h2[@class='chapter-title']",
+            ]
+        )
 
         return cmd
 
@@ -186,9 +189,7 @@ class CalibreExporter:
                 return ExportResult(success=False, error_message=error_msg)
 
         except subprocess.TimeoutExpired:
-            return ExportResult(
-                success=False, error_message="Export timed out after 5 minutes"
-            )
+            return ExportResult(success=False, error_message="Export timed out after 5 minutes")
         except Exception as e:
             return ExportResult(success=False, error_message=str(e))
 
@@ -198,48 +199,47 @@ async def export_book(
     output_format: str = "azw3",
 ) -> ExportResult:
     """Fast export using direct EPUB assembly.
-    
+
     This is much faster than the HTML-based export for large books.
     Creates EPUB directly, then converts to target format if needed.
-    
+
     Args:
         book_dir: Book directory path
         output_format: Output format (epub, azw3, mobi, pdf)
-        
+
     Returns:
         ExportResult
     """
     from dich_truyen.exporter.epub_assembler import assemble_book_fast
-    
+
     book_dir = Path(book_dir)
     output_format = output_format.lower()
-    
+
     # Step 1: Create EPUB using fast assembler
     try:
         epub_path = await assemble_book_fast(book_dir)
     except Exception as e:
         return ExportResult(success=False, error_message=f"EPUB assembly failed: {e}")
-    
+
     # Step 2: If output is EPUB, we're done
     if output_format == "epub":
         return ExportResult(success=True, output_path=str(epub_path))
-    
+
     # Step 3: Convert EPUB to target format using Calibre
     logger.info("converting_format", format=output_format.upper())
-    
+
     exporter = CalibreExporter()
-    
+
     # Load metadata
     progress = BookProgress.load(book_dir)
     if progress:
         metadata = BookMetadataManager.from_book_progress(progress)
     else:
         metadata = None
-    
+
     return exporter.export(
         input_html=epub_path,  # EPUB as input
         output_format=output_format,
         metadata=metadata,
         output_dir=book_dir / "output",
     )
-

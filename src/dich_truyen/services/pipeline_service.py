@@ -82,7 +82,6 @@ def scan_books_on_startup(books_dir: Path) -> None:
         _save_pipeline_settings(book_dir=book_dir)
 
 
-
 class JobStatus(StrEnum):
     """Pipeline job status."""
 
@@ -209,9 +208,7 @@ class PipelineService:
                 if not target_dir.exists():
                     raise FileNotFoundError(f"Directory not found: {target_dir}")
             else:
-                target_dir = await create_book_directory(
-                    job["url"], get_config().books_dir
-                )
+                target_dir = await create_book_directory(job["url"], get_config().books_dir)
                 job["book_dir"] = str(target_dir)
 
             # Save pipeline settings for resume
@@ -224,7 +221,6 @@ class PipelineService:
                 translate_only=job["translate_only"],
                 no_glossary=job["no_glossary"],
             )
-
 
             # Import glossary if provided
             if job["glossary"]:
@@ -252,9 +248,7 @@ class PipelineService:
             pipeline._update_chapter_status = emitting_update
 
             # Start periodic progress polling (mirrors CLI's update_display)
-            progress_task = asyncio.create_task(
-                self._emit_progress_periodically(job, pipeline)
-            )
+            progress_task = asyncio.create_task(self._emit_progress_periodically(job, pipeline))
 
             result = await pipeline.run(
                 book_dir=target_dir,
@@ -318,8 +312,7 @@ class PipelineService:
                     "total_chapters": pipeline.stats.total_chapters,
                     "crawled": pipeline.stats.chapters_crawled,
                     "translated": pipeline.stats.chapters_translated,
-                    "errors": pipeline.stats.crawl_errors
-                    + pipeline.stats.translate_errors,
+                    "errors": pipeline.stats.crawl_errors + pipeline.stats.translate_errors,
                     "worker_status": dict(pipeline.stats.worker_status),
                     "glossary_count": pipeline.stats.glossary_count,
                     "crawl_status": pipeline.stats.crawl_status,

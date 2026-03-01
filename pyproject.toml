@@ -52,6 +52,21 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
 
+[tool.ruff.lint.per-file-ignores]
+# Vietnamese/Chinese prompt strings and HTML templates can't be line-wrapped
+"src/dich_truyen/translator/llm.py" = ["E501"]
+"src/dich_truyen/translator/glossary.py" = ["E501"]
+"src/dich_truyen/translator/engine.py" = ["E501"]
+"src/dich_truyen/crawler/pattern.py" = ["E501"]
+"src/dich_truyen/exporter/calibre.py" = ["E501"]
+"src/dich_truyen/exporter/epub_assembler.py" = ["E501"]
+"src/dich_truyen/pipeline/streaming.py" = ["E501"]
+"src/dich_truyen/formatter/assembler.py" = ["W293"]  # HTML template whitespace
+# Auto-generated skill scripts
+".agent/skills/*/scripts/*.py" = ["E501", "F841"]
+# One-off test scripts
+"scripts/*.py" = ["E501"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",

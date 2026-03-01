@@ -5,7 +5,7 @@ and future CLI refactoring.
 """
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from dich_truyen.utils.progress import BookProgress, ChapterStatus
 
@@ -46,22 +46,26 @@ class BookService:
 
             total = len(progress.chapters)
             translated = sum(
-                1 for c in progress.chapters
-                if c.status in (
+                1
+                for c in progress.chapters
+                if c.status
+                in (
                     ChapterStatus.TRANSLATED,
                     ChapterStatus.FORMATTED,
                     ChapterStatus.EXPORTED,
                 )
             )
-            books.append({
-                "id": book_dir.name,
-                "title": progress.title,
-                "title_vi": progress.title_vi,
-                "author": progress.author,
-                "author_vi": progress.author_vi,
-                "total_chapters": total,
-                "translated_chapters": translated,
-            })
+            books.append(
+                {
+                    "id": book_dir.name,
+                    "title": progress.title,
+                    "title_vi": progress.title_vi,
+                    "author": progress.author,
+                    "author_vi": progress.author_vi,
+                    "total_chapters": total,
+                    "translated_chapters": translated,
+                }
+            )
         return books
 
     def get_book(self, book_id: str) -> dict[str, Any]:

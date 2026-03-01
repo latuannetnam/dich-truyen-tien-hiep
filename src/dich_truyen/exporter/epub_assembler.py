@@ -81,7 +81,7 @@ class DirectEPUBAssembler:
 
     def __init__(self, config: Optional[ExportConfig] = None):
         """Initialize assembler.
-        
+
         Args:
             config: Export configuration (uses default if not provided)
         """
@@ -93,43 +93,44 @@ class DirectEPUBAssembler:
         progress: Optional[BookProgress] = None,
     ) -> Path:
         """Assemble book into EPUB using parallel chapter writing.
-        
+
         Args:
             book_dir: Book directory containing translated chapters
             progress: Book progress with chapter list
-            
+
         Returns:
             Path to generated EPUB file
         """
         book_dir = Path(book_dir)
-        
+
         # Load progress if not provided
         if not progress:
             progress = BookProgress.load(book_dir)
             if not progress:
                 raise ValueError(f"No book.json found in {book_dir}")
-        
+
         # Prepare directories
         epub_work_dir = book_dir / "epub_build"
         oebps_dir = epub_work_dir / "OEBPS"
         chapters_dir = oebps_dir / "chapters"
         meta_inf_dir = epub_work_dir / "META-INF"
-        
+
         # Clean and create directories
         if epub_work_dir.exists():
             import shutil
+
             shutil.rmtree(epub_work_dir)
-        
+
         chapters_dir.mkdir(parents=True, exist_ok=True)
         meta_inf_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Get translated chapters
         translated_dir = book_dir / "translated"
         translated_chapters = self._get_translated_chapters(progress, translated_dir)
-        
+
         if not translated_chapters:
             raise ValueError(f"No translated chapters found in {translated_dir}")
-        
+
         logger.info("assembling_epub", chapters=len(translated_chapters))
 
         # Parallel chapter file writing
@@ -151,7 +152,7 @@ class DirectEPUBAssembler:
                 completed += 1
 
         # Create tasks for parallel execution
-        with ThreadPoolExecutor(max_workers=self.config.parallel_workers) as executor:
+        with ThreadPoolExecutor(max_workers=self.config.parallel_workers) as _executor:
             loop = asyncio.get_event_loop()
             tasks = []
 
@@ -190,7 +191,7 @@ class DirectEPUBAssembler:
         translated_dir: Path,
     ) -> list[tuple[Chapter, str]]:
         """Load translated chapter content.
-        
+
         Returns:
             List of (Chapter, content) tuples
         """
@@ -211,13 +212,13 @@ class DirectEPUBAssembler:
     ) -> None:
         """Write single chapter as XHTML file."""
         title = escape(chapter.title_vi or chapter.title_cn or f"Chương {index}")
-        
+
         # Convert paragraphs to HTML
         paragraphs = content.strip().split("\n\n")
         html_paragraphs = "\n".join(
             f"    <p>{escape(p.strip())}</p>" for p in paragraphs if p.strip()
         )
-        
+
         xhtml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="vi">
@@ -231,7 +232,7 @@ class DirectEPUBAssembler:
 {html_paragraphs}
 </body>
 </html>"""
-        
+
         path = chapters_dir / f"chapter_{index:04d}.xhtml"
         path.write_text(xhtml, encoding="utf-8")
 
@@ -244,22 +245,26 @@ class DirectEPUBAssembler:
         """Generate content.opf manifest file."""
         title = escape(progress.title_vi or progress.title or "Untitled")
         author = escape(progress.author_vi or progress.author or "Unknown")
-        
+
         # Build manifest items
-        manifest_items = ['    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>']
+        manifest_items = [
+            '    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>'
+        ]
         manifest_items.append('    <item id="styles" href="styles.css" media-type="text/css"/>')
-        manifest_items.append('    <item id="titlepage" href="titlepage.xhtml" media-type="application/xhtml+xml"/>')
-        
+        manifest_items.append(
+            '    <item id="titlepage" href="titlepage.xhtml" media-type="application/xhtml+xml"/>'
+        )
+
         for i, _ in enumerate(chapters, 1):
             manifest_items.append(
                 f'    <item id="chapter{i:04d}" href="chapters/chapter_{i:04d}.xhtml" media-type="application/xhtml+xml"/>'
             )
-        
+
         # Build spine
         spine_items = ['    <itemref idref="titlepage"/>']
         for i, _ in enumerate(chapters, 1):
             spine_items.append(f'    <itemref idref="chapter{i:04d}"/>')
-        
+
         opf = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package version="2.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
@@ -275,7 +280,7 @@ class DirectEPUBAssembler:
 {chr(10).join(spine_items)}
   </spine>
 </package>"""
-        
+
         path = oebps_dir / "content.opf"
         path.write_text(opf, encoding="utf-8")
 
@@ -287,7 +292,7 @@ class DirectEPUBAssembler:
     ) -> None:
         """Generate toc.ncx navigation file."""
         title = escape(progress.title_vi or progress.title or "Untitled")
-        
+
         # Build navPoints
         nav_points = []
         for i, chapter in enumerate(chapters, 1):
@@ -296,7 +301,7 @@ class DirectEPUBAssembler:
       <navLabel><text>{ch_title}</text></navLabel>
       <content src="chapters/chapter_{i:04d}.xhtml"/>
     </navPoint>""")
-        
+
         ncx = f"""<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
   <head>
@@ -310,7 +315,7 @@ class DirectEPUBAssembler:
 {chr(10).join(nav_points)}
   </navMap>
 </ncx>"""
-        
+
         path = oebps_dir / "toc.ncx"
         path.write_text(ncx, encoding="utf-8")
 
@@ -328,7 +333,7 @@ class DirectEPUBAssembler:
         """Write title page XHTML."""
         title = escape(progress.title_vi or progress.title or "Untitled")
         author = escape(progress.author_vi or progress.author or "Unknown")
-        
+
         xhtml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="vi">
@@ -344,13 +349,13 @@ class DirectEPUBAssembler:
     </div>
 </body>
 </html>"""
-        
+
         path = oebps_dir / "titlepage.xhtml"
         path.write_text(xhtml, encoding="utf-8")
 
     def _create_epub_zip(self, work_dir: Path, output_path: Path) -> None:
         """Create EPUB ZIP archive.
-        
+
         EPUB spec requires:
         1. mimetype file must be first entry
         2. mimetype must be uncompressed (ZIP_STORED)
@@ -358,7 +363,7 @@ class DirectEPUBAssembler:
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
             # mimetype MUST be first and uncompressed
             zf.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
-            
+
             # Add all other files
             for file_path in sorted(work_dir.rglob("*")):
                 if file_path.is_file():
@@ -371,11 +376,11 @@ async def assemble_book_fast(
     progress: Optional[BookProgress] = None,
 ) -> Path:
     """Convenience function for fast EPUB assembly.
-    
+
     Args:
         book_dir: Book directory
         progress: Optional book progress
-        
+
     Returns:
         Path to generated EPUB
     """

@@ -4,14 +4,13 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel
 import structlog
+from pydantic import BaseModel
 
 from dich_truyen.config import CrawlerConfig, get_config
 from dich_truyen.crawler.base import BaseCrawler
-from dich_truyen.crawler.pattern import DiscoveredChapter, PatternDiscovery
+from dich_truyen.crawler.pattern import PatternDiscovery
 from dich_truyen.utils.progress import (
-    BookPatterns,
     BookProgress,
     Chapter,
     ChapterStatus,
@@ -121,13 +120,15 @@ class ChapterDownloader:
             logger.debug("analyzing_chapter_page")
             async with BaseCrawler(self.config) as crawler:
                 chapter_html = await crawler.fetch(chapters[0].url, encoding)
-                content_patterns = await discovery.analyze_chapter_page(chapter_html, chapters[0].url)
+                content_patterns = await discovery.analyze_chapter_page(
+                    chapter_html, chapters[0].url
+                )
 
             # Merge patterns
             discovered.patterns.title_selector = content_patterns.title_selector
             discovered.patterns.content_selector = content_patterns.content_selector
             discovered.patterns.elements_to_remove = content_patterns.elements_to_remove
-        
+
         logger.debug(
             "patterns_finalized",
             title_selector=discovered.patterns.title_selector,
@@ -225,7 +226,11 @@ class ChapterDownloader:
         # Download chapters with simple loop + periodic logging
         async with BaseCrawler(self.config) as crawler:
             for i, chapter in enumerate(chapters_to_download, 1):
-                logger.debug("downloading_chapter", chapter=chapter.index, title=(chapter.title_cn or "")[:20])
+                logger.debug(
+                    "downloading_chapter",
+                    chapter=chapter.index,
+                    title=(chapter.title_cn or "")[:20],
+                )
 
                 try:
                     # Fetch chapter page
@@ -254,9 +259,7 @@ class ChapterDownloader:
                     error_msg = f"Chapter {chapter.index}: {str(e)}"
                     result.errors.append(error_msg)
                     result.failed += 1
-                    progress.update_chapter_status(
-                        chapter.index, ChapterStatus.ERROR, str(e)
-                    )
+                    progress.update_chapter_status(chapter.index, ChapterStatus.ERROR, str(e))
                     logger.error("download_error", chapter=chapter.index, error=str(e))
 
                 # Save progress after each chapter to prevent data loss

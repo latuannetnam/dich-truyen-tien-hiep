@@ -106,9 +106,7 @@ class GlossaryService:
         writer = csv.writer(output)
         writer.writerow(["chinese", "vietnamese", "category", "notes"])
         for entry in glossary.entries:
-            writer.writerow(
-                [entry.chinese, entry.vietnamese, entry.category, entry.notes or ""]
-            )
+            writer.writerow([entry.chinese, entry.vietnamese, entry.category, entry.notes or ""])
         return output.getvalue()
 
     def import_csv(self, book_id: str, csv_text: str) -> int:

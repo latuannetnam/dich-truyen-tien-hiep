@@ -74,7 +74,9 @@ def cli(ctx, verbose: bool, quiet: bool, log_file: Optional[str], env_file: Opti
 @click.option("--translate-only", is_flag=True, help="Skip crawl, only translate existing chapters")
 @click.option("--skip-export", is_flag=True, help="Skip export phase")
 @click.option("--no-glossary", is_flag=True, help="Disable auto-glossary generation")
-@click.option("--glossary", type=click.Path(exists=True), help="Import glossary from CSV before translation")
+@click.option(
+    "--glossary", type=click.Path(exists=True), help="Import glossary from CSV before translation"
+)
 @click.option("--force", is_flag=True, help="Force re-process all chapters")
 @click.pass_context
 def pipeline(
@@ -190,7 +192,9 @@ def pipeline(
             click.echo("Run 'dich-truyen export' to manually export available chapters")
         elif not result.all_done:
             logger.warning("export_skipped", reason="not_all_chapters_translated")
-            click.echo("Resume with same command, or run 'dich-truyen export' to export available chapters")
+            click.echo(
+                "Resume with same command, or run 'dich-truyen export' to export available chapters"
+            )
 
     asyncio.run(run())
 
@@ -224,10 +228,12 @@ def export(
 
     from dich_truyen.exporter.calibre import export_book
 
-    result = asyncio.run(export_book(
-        book_dir=Path(book_dir),
-        output_format=output_format,
-    ))
+    result = asyncio.run(
+        export_book(
+            book_dir=Path(book_dir),
+            output_format=output_format,
+        )
+    )
 
     if not result.success:
         logger.error("export_failed", error=result.error_message)
@@ -265,7 +271,14 @@ def glossary_export(book_dir: str, output: str) -> None:
 
 @glossary.command("import")
 @click.option("--book-dir", required=True, type=click.Path(exists=True), help="Book directory")
-@click.option("--input", "-i", "input_file", required=True, type=click.Path(exists=True), help="Input CSV file")
+@click.option(
+    "--input",
+    "-i",
+    "input_file",
+    required=True,
+    type=click.Path(exists=True),
+    help="Input CSV file",
+)
 @click.option("--merge/--replace", default=True, help="Merge with existing or replace")
 def glossary_import(book_dir: str, input_file: str, merge: bool) -> None:
     """Import glossary from CSV file."""
@@ -424,15 +437,13 @@ def ui(port: int, host: str, no_browser: bool) -> None:
 
         threading.Thread(target=open_browser, daemon=True).start()
 
-    click.echo(f"🚀 Dịch Truyện UI starting...")
+    click.echo("🚀 Dịch Truyện UI starting...")
     click.echo(f"   UI:  http://localhost:{frontend_port}")
     click.echo(f"   API: http://{host}:{port}/api/docs")
     click.echo("   Press Ctrl+C to stop\n")
     import signal
 
-    config_uv = uvicorn.Config(
-        app, host=host, port=port, log_level="info", lifespan="on"
-    )
+    config_uv = uvicorn.Config(app, host=host, port=port, log_level="info", lifespan="on")
     server = uvicorn.Server(config_uv)
 
     # Disable uvicorn's built-in signal handlers to avoid ugly tracebacks

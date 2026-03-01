@@ -2,18 +2,19 @@
 
 import os
 import shutil
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import pytest
 from dotenv import load_dotenv
 
 # Load .env for configuration
 load_dotenv()
 
-from dich_truyen.exporter.calibre import CalibreExporter, ExportResult, export_book
-from dich_truyen.formatter.metadata import BookMetadataManager
-from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
-from dich_truyen.config import CalibreConfig
+from dich_truyen.config import CalibreConfig  # noqa: E402
+from dich_truyen.exporter.calibre import CalibreExporter, ExportResult, export_book  # noqa: E402
+from dich_truyen.formatter.metadata import BookMetadataManager  # noqa: E402
+from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus  # noqa: E402
 
 
 # Check if Calibre is available for integration tests
@@ -23,9 +24,9 @@ def _has_calibre():
     # Check if it's in PATH or explicit path exists
     return shutil.which(calibre_path) is not None or Path(calibre_path).exists()
 
+
 requires_calibre = pytest.mark.skipif(
-    not _has_calibre(),
-    reason="Requires Calibre installed (set CALIBRE_PATH)"
+    not _has_calibre(), reason="Requires Calibre installed (set CALIBRE_PATH)"
 )
 
 
@@ -61,35 +62,35 @@ class TestCalibreExporter:
 
     def test_build_command_basic(self, exporter):
         """Test building basic command."""
-        with patch.object(exporter, '_find_calibre', return_value='/path/to/ebook-convert'):
-            exporter._calibre_path = '/path/to/ebook-convert'
-            
+        with patch.object(exporter, "_find_calibre", return_value="/path/to/ebook-convert"):
+            exporter._calibre_path = "/path/to/ebook-convert"
+
             cmd = exporter._build_command(
                 input_path=Path("/input/book.html"),
                 output_path=Path("/output/book.epub"),
             )
-            
-            assert cmd[0] == '/path/to/ebook-convert'
+
+            assert cmd[0] == "/path/to/ebook-convert"
             # Use Path for cross-platform comparison
             assert "book.html" in cmd[1]
             assert "book.epub" in cmd[2]
 
     def test_build_command_with_metadata(self, exporter):
         """Test building command with metadata."""
-        with patch.object(exporter, '_find_calibre', return_value='/path/to/ebook-convert'):
-            exporter._calibre_path = '/path/to/ebook-convert'
-            
+        with patch.object(exporter, "_find_calibre", return_value="/path/to/ebook-convert"):
+            exporter._calibre_path = "/path/to/ebook-convert"
+
             metadata = BookMetadataManager(
                 title="Test Book",
                 author="Test Author",
             )
-            
+
             cmd = exporter._build_command(
                 input_path=Path("/input/book.html"),
                 output_path=Path("/output/book.epub"),
                 metadata=metadata,
             )
-            
+
             assert "--title" in cmd
             assert "Test Book" in cmd
             assert "--authors" in cmd
@@ -134,7 +135,14 @@ class TestExportBook:
             title_vi="Kiếm Lai",
             author="烽火戏诸侯",
             chapters=[
-                Chapter(id="ch1", index=1, url="http://example.com/1", title="第一章", title_vi="Chương 1", status=ChapterStatus.TRANSLATED),
+                Chapter(
+                    id="ch1",
+                    index=1,
+                    url="http://example.com/1",
+                    title="第一章",
+                    title_vi="Chương 1",
+                    status=ChapterStatus.TRANSLATED,
+                ),
             ],
         )
         progress.save(book_dir)
@@ -153,7 +161,7 @@ class TestExportBook:
         book_dir = tmp_path / "empty-book"
         book_dir.mkdir()
         (book_dir / "translated").mkdir()
-        
+
         # Create book.json with no chapters
         progress = BookProgress(url="http://example.com", title="Test", chapters=[])
         progress.save(book_dir)
@@ -188,7 +196,7 @@ class TestCalibeFinding:
         path = exporter._find_calibre()
         assert path == str(fake_calibre)
 
-    @patch('shutil.which')
+    @patch("shutil.which")
     def test_find_calibre_in_path(self, mock_which):
         """Test finding Calibre in system PATH."""
         mock_which.return_value = "/usr/bin/ebook-convert"
@@ -198,8 +206,8 @@ class TestCalibeFinding:
 
         assert path == "/usr/bin/ebook-convert"
 
-    @patch('shutil.which')
-    @patch('pathlib.Path.exists')
+    @patch("shutil.which")
+    @patch("pathlib.Path.exists")
     def test_calibre_not_found(self, mock_exists, mock_which):
         """Test error when Calibre not found."""
         mock_which.return_value = None
@@ -237,11 +245,19 @@ class TestExportIntegration:
             title_vi="Sách Thử Nghiệm",
         )
         progress.chapters.append(
-            Chapter(index=1, id="1", url="http://example.com/1", title_cn="第一章", title_vi="Chương 1", status=ChapterStatus.TRANSLATED)
+            Chapter(
+                index=1,
+                id="1",
+                url="http://example.com/1",
+                title_cn="第一章",
+                title_vi="Chương 1",
+                status=ChapterStatus.TRANSLATED,
+            )
         )
         progress.save(book_dir)
 
         result = await export_book(book_dir, "epub")
         assert result.success, f"Export failed: {result.error_message}"
-        assert Path(result.output_path).exists(), f"Output path does not exist: {result.output_path}"
-
+        assert Path(result.output_path).exists(), (
+            f"Output path does not exist: {result.output_path}"
+        )

@@ -1,11 +1,11 @@
 """Tests for StyleManager CRUD operations."""
 
-import yaml
 from pathlib import Path
 
 import pytest
+import yaml
 
-from dich_truyen.translator.style import StyleManager, StyleTemplate, BUILT_IN_STYLES
+from dich_truyen.translator.style import StyleManager, StyleTemplate
 
 
 @pytest.fixture

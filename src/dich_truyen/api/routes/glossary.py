@@ -10,7 +10,7 @@ import io
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -100,18 +100,18 @@ async def get_glossary(book_id: str) -> GlossaryResponse:
 
 
 @router.post("")
-async def add_glossary_entry(
-    book_id: str, entry: GlossaryEntryRequest
-) -> dict[str, str]:
+async def add_glossary_entry(book_id: str, entry: GlossaryEntryRequest) -> dict[str, str]:
     """Add or update a glossary entry."""
     book_dir = _get_book_dir(book_id)
     glossary = _load_glossary_quiet(book_dir)
-    glossary.add(GlossaryEntry(
-        chinese=entry.chinese,
-        vietnamese=entry.vietnamese,
-        category=entry.category,
-        notes=entry.notes,
-    ))
+    glossary.add(
+        GlossaryEntry(
+            chinese=entry.chinese,
+            vietnamese=entry.vietnamese,
+            category=entry.category,
+            notes=entry.notes,
+        )
+    )
     glossary.save(book_dir)
     return {"status": "ok"}
 
@@ -128,12 +128,14 @@ async def update_glossary_entry(
     if term != entry.chinese:
         glossary.remove(term)
 
-    glossary.add(GlossaryEntry(
-        chinese=entry.chinese,
-        vietnamese=entry.vietnamese,
-        category=entry.category,
-        notes=entry.notes,
-    ))
+    glossary.add(
+        GlossaryEntry(
+            chinese=entry.chinese,
+            vietnamese=entry.vietnamese,
+            category=entry.category,
+            notes=entry.notes,
+        )
+    )
     glossary.save(book_dir)
     return {"status": "ok"}
 
@@ -170,9 +172,7 @@ async def export_glossary_csv(book_id: str) -> StreamingResponse:
 
 
 @router.post("/import")
-async def import_glossary_csv(
-    book_id: str, file: UploadFile = File(...)
-) -> dict[str, Any]:
+async def import_glossary_csv(book_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
     """Import glossary entries from uploaded CSV."""
     book_dir = _get_book_dir(book_id)
     glossary = _load_glossary_quiet(book_dir)
@@ -184,12 +184,14 @@ async def import_glossary_csv(
     imported = 0
     for row in reader:
         if "chinese" in row and "vietnamese" in row:
-            glossary.add(GlossaryEntry(
-                chinese=row["chinese"],
-                vietnamese=row["vietnamese"],
-                category=row.get("category", "general"),
-                notes=row.get("notes"),
-            ))
+            glossary.add(
+                GlossaryEntry(
+                    chinese=row["chinese"],
+                    vietnamese=row["vietnamese"],
+                    category=row.get("category", "general"),
+                    notes=row.get("notes"),
+                )
+            )
             imported += 1
 
     glossary.save(book_dir)

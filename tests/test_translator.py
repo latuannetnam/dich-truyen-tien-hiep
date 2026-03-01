@@ -1,33 +1,34 @@
 """Unit tests for the translation module."""
 
 import os
+from unittest.mock import MagicMock, patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 from dotenv import load_dotenv
 
 # Load .env for API key check
 load_dotenv()
 
-from dich_truyen.translator.glossary import Glossary, GlossaryEntry
-from dich_truyen.translator.style import (
-    StyleTemplate,
-    StyleManager,
-    BUILT_IN_STYLES,
-    TIEN_HIEP_STYLE,
-    KIEM_HIEP_STYLE,
-)
-from dich_truyen.translator.engine import TranslationEngine
-from dich_truyen.translator.llm import LLMClient, TaskType
-from dich_truyen.config import (
-    LLMConfig,
-    TranslationConfig,
+from dich_truyen.config import (  # noqa: E402
+    AppConfig,
     CrawlerLLMConfig,
     GlossaryLLMConfig,
+    LLMConfig,
+    TranslationConfig,
     TranslatorLLMConfig,
-    AppConfig,
     get_effective_llm_config,
 )
+from dich_truyen.translator.engine import TranslationEngine  # noqa: E402
+from dich_truyen.translator.glossary import Glossary, GlossaryEntry  # noqa: E402
+from dich_truyen.translator.llm import LLMClient, TaskType  # noqa: E402
+from dich_truyen.translator.style import (  # noqa: E402
+    BUILT_IN_STYLES,
+    KIEM_HIEP_STYLE,
+    TIEN_HIEP_STYLE,
+    StyleManager,
+    StyleTemplate,
+)
+
 
 # Check if OpenAI API is configured for integration tests
 def _has_openai_api():
@@ -36,9 +37,9 @@ def _has_openai_api():
     # Skip if no key or placeholder key
     return bool(api_key) and not api_key.startswith("sk-your")
 
+
 requires_openai = pytest.mark.skipif(
-    not _has_openai_api(),
-    reason="Requires OpenAI API key (set OPENAI_API_KEY)"
+    not _has_openai_api(), reason="Requires OpenAI API key (set OPENAI_API_KEY)"
 )
 
 
@@ -115,11 +116,13 @@ class TestGlossary:
 
     def test_get_by_category(self):
         """Test filtering by category."""
-        glossary = Glossary([
-            GlossaryEntry(chinese="剑", vietnamese="kiếm", category="item"),
-            GlossaryEntry(chinese="刀", vietnamese="đao", category="item"),
-            GlossaryEntry(chinese="张三", vietnamese="Trương Tam", category="character"),
-        ])
+        glossary = Glossary(
+            [
+                GlossaryEntry(chinese="剑", vietnamese="kiếm", category="item"),
+                GlossaryEntry(chinese="刀", vietnamese="đao", category="item"),
+                GlossaryEntry(chinese="张三", vietnamese="Trương Tam", category="character"),
+            ]
+        )
 
         items = glossary.get_by_category("item")
         assert len(items) == 2
@@ -129,10 +132,12 @@ class TestGlossary:
 
     def test_to_prompt_format(self):
         """Test formatting for LLM prompt."""
-        glossary = Glossary([
-            GlossaryEntry(chinese="陈平安", vietnamese="Trần Bình An", category="character"),
-            GlossaryEntry(chinese="练气境", vietnamese="Luyện Khí cảnh", category="realm"),
-        ])
+        glossary = Glossary(
+            [
+                GlossaryEntry(chinese="陈平安", vietnamese="Trần Bình An", category="character"),
+                GlossaryEntry(chinese="练气境", vietnamese="Luyện Khí cảnh", category="realm"),
+            ]
+        )
 
         prompt = glossary.to_prompt_format()
         assert "Trần Bình An" in prompt
@@ -142,10 +147,12 @@ class TestGlossary:
 
     def test_csv_export_import(self, tmp_path):
         """Test CSV export and import."""
-        glossary = Glossary([
-            GlossaryEntry(chinese="剑", vietnamese="kiếm", category="item"),
-            GlossaryEntry(chinese="张三", vietnamese="Trương Tam", category="character"),
-        ])
+        glossary = Glossary(
+            [
+                GlossaryEntry(chinese="剑", vietnamese="kiếm", category="item"),
+                GlossaryEntry(chinese="张三", vietnamese="Trương Tam", category="character"),
+            ]
+        )
 
         csv_path = tmp_path / "glossary.csv"
         glossary.to_csv(csv_path)
@@ -157,9 +164,11 @@ class TestGlossary:
 
     def test_save_and_load(self, tmp_path):
         """Test saving and loading from book directory."""
-        glossary = Glossary([
-            GlossaryEntry(chinese="剑", vietnamese="kiếm"),
-        ])
+        glossary = Glossary(
+            [
+                GlossaryEntry(chinese="剑", vietnamese="kiếm"),
+            ]
+        )
 
         glossary.save(tmp_path)
         assert (tmp_path / "glossary.csv").exists()
@@ -422,7 +431,7 @@ class TestMultiModelConfig:
         crawler_config = CrawlerLLMConfig()
         glossary_config = GlossaryLLMConfig()
         translator_config = TranslatorLLMConfig()
-        
+
         # All should have default empty values
         assert crawler_config.api_key == ""
         assert crawler_config.model == ""
@@ -440,12 +449,12 @@ class TestMultiModelConfig:
             max_tokens=1000,
             temperature=0.5,
         )
-        
+
         # Empty specific config - should use all fallback values
         specific = CrawlerLLMConfig()
-        
+
         effective = get_effective_llm_config(specific, fallback)
-        
+
         assert effective.api_key == "fallback-key"
         assert effective.base_url == "https://fallback.com/v1"
         assert effective.model == "fallback-model"
@@ -461,21 +470,21 @@ class TestMultiModelConfig:
             max_tokens=1000,
             temperature=0.5,
         )
-        
+
         # Specific config with some values set
         specific = CrawlerLLMConfig(
             api_key="specific-key",
             model="specific-model",
             temperature=0.1,
         )
-        
+
         effective = get_effective_llm_config(specific, fallback)
-        
+
         # Overridden values
         assert effective.api_key == "specific-key"
         assert effective.model == "specific-model"
         assert effective.temperature == 0.1
-        
+
         # Fallback values (not set in specific)
         assert effective.base_url == "https://fallback.com/v1"
         assert effective.max_tokens == 1000
@@ -489,12 +498,12 @@ class TestMultiModelConfig:
             max_tokens=4096,
             temperature=0.7,
         )
-        
+
         # Only override the model
         specific = GlossaryLLMConfig(model="gpt-4o-mini")
-        
+
         effective = get_effective_llm_config(specific, fallback)
-        
+
         assert effective.model == "gpt-4o-mini"
         assert effective.api_key == "fallback-key"
         assert effective.base_url == "https://fallback.com/v1"
@@ -507,9 +516,9 @@ class TestMultiModelConfig:
             api_key="explicit-key",
             model="explicit-model",
         )
-        
+
         client = LLMClient(config=config)
-        
+
         assert client.config.api_key == "explicit-key"
         assert client.config.model == "explicit-model"
 
@@ -519,7 +528,7 @@ class TestMultiModelConfig:
         valid_tasks: list[TaskType] = ["crawl", "glossary", "translate", "default"]
         assert len(valid_tasks) == 4
 
-    @patch('dich_truyen.translator.llm.get_config')
+    @patch("dich_truyen.translator.llm.get_config")
     def test_llm_client_crawl_task_uses_crawler_config(self, mock_get_config):
         """Test LLMClient with task='crawl' uses crawler_llm config."""
         # Setup mock config
@@ -534,15 +543,15 @@ class TestMultiModelConfig:
             model="crawler-model",
         )
         mock_get_config.return_value = mock_app_config
-        
+
         client = LLMClient(task="crawl")
-        
+
         assert client.config.api_key == "crawler-key"
         assert client.config.model == "crawler-model"
         # Falls back to default for base_url
         assert client.config.base_url == "https://default.com/v1"
 
-    @patch('dich_truyen.translator.llm.get_config')
+    @patch("dich_truyen.translator.llm.get_config")
     def test_llm_client_glossary_task_uses_glossary_config(self, mock_get_config):
         """Test LLMClient with task='glossary' uses glossary_llm config."""
         mock_app_config = MagicMock()
@@ -555,14 +564,14 @@ class TestMultiModelConfig:
             temperature=0.3,
         )
         mock_get_config.return_value = mock_app_config
-        
+
         client = LLMClient(task="glossary")
-        
+
         assert client.config.model == "glossary-model"
         assert client.config.temperature == 0.3
         assert client.config.api_key == "default-key"
 
-    @patch('dich_truyen.translator.llm.get_config')
+    @patch("dich_truyen.translator.llm.get_config")
     def test_llm_client_translate_task_uses_translator_config(self, mock_get_config):
         """Test LLMClient with task='translate' uses translator_llm config."""
         mock_app_config = MagicMock()
@@ -575,14 +584,14 @@ class TestMultiModelConfig:
             max_tokens=8192,
         )
         mock_get_config.return_value = mock_app_config
-        
+
         client = LLMClient(task="translate")
-        
+
         assert client.config.model == "translator-model"
         assert client.config.max_tokens == 8192
         assert client.config.api_key == "default-key"
 
-    @patch('dich_truyen.translator.llm.get_config')
+    @patch("dich_truyen.translator.llm.get_config")
     def test_llm_client_default_task_uses_default_config(self, mock_get_config):
         """Test LLMClient with task='default' uses default llm config."""
         mock_app_config = MagicMock()
@@ -592,14 +601,14 @@ class TestMultiModelConfig:
             temperature=0.7,
         )
         mock_get_config.return_value = mock_app_config
-        
+
         client = LLMClient(task="default")
-        
+
         assert client.config.api_key == "default-key"
         assert client.config.model == "default-model"
         assert client.config.temperature == 0.7
 
-    @patch('dich_truyen.translator.llm.get_config')
+    @patch("dich_truyen.translator.llm.get_config")
     def test_llm_client_no_task_uses_default_config(self, mock_get_config):
         """Test LLMClient without task parameter uses default llm config."""
         mock_app_config = MagicMock()
@@ -608,38 +617,38 @@ class TestMultiModelConfig:
             model="default-model",
         )
         mock_get_config.return_value = mock_app_config
-        
+
         client = LLMClient()
-        
+
         assert client.config.api_key == "default-key"
         assert client.config.model == "default-model"
 
-    @patch('dich_truyen.translator.llm.get_config')
+    @patch("dich_truyen.translator.llm.get_config")
     def test_llm_client_explicit_config_takes_precedence(self, mock_get_config):
         """Test that explicit config takes precedence over task-based lookup."""
         mock_app_config = MagicMock()
         mock_app_config.llm = LLMConfig(api_key="default-key", model="default-model")
         mock_app_config.crawler_llm = CrawlerLLMConfig(model="crawler-model")
         mock_get_config.return_value = mock_app_config
-        
+
         explicit_config = LLMConfig(api_key="explicit-key", model="explicit-model")
-        
+
         # Even with task="crawl", explicit config should take precedence
         client = LLMClient(config=explicit_config, task="crawl")
-        
+
         assert client.config.api_key == "explicit-key"
         assert client.config.model == "explicit-model"
 
     def test_app_config_includes_task_specific_configs(self):
         """Test that AppConfig includes all task-specific LLM configs."""
         config = AppConfig()
-        
+
         # Check all config types exist
-        assert hasattr(config, 'llm')
-        assert hasattr(config, 'crawler_llm')
-        assert hasattr(config, 'glossary_llm')
-        assert hasattr(config, 'translator_llm')
-        
+        assert hasattr(config, "llm")
+        assert hasattr(config, "crawler_llm")
+        assert hasattr(config, "glossary_llm")
+        assert hasattr(config, "translator_llm")
+
         # Check they are correct types
         assert isinstance(config.llm, LLMConfig)
         assert isinstance(config.crawler_llm, CrawlerLLMConfig)

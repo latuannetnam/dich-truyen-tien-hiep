@@ -72,9 +72,12 @@ class BookMetadataManager(BaseModel):
             List of command-line arguments
         """
         args = [
-            "--title", self.title,
-            "--authors", self.author,
-            "--language", self.language,
+            "--title",
+            self.title,
+            "--authors",
+            self.author,
+            "--language",
+            self.language,
         ]
 
         if self.description:

@@ -132,19 +132,21 @@ async def get_resumable_books() -> list[dict]:
             except (json.JSONDecodeError, OSError):
                 pass
 
-        resumable.append({
-            "book_dir": str(book_dir),
-            "book_id": book_dir.name,
-            "title": progress.title,
-            "title_vi": progress.title_vi,
-            "total_chapters": len(progress.chapters),
-            "translated": translated,
-            "crawled": crawled,
-            "pending": pending,
-            "errors": errors,
-            "last_settings": last_settings,
-            "last_run_at": last_run_at,
-        })
+        resumable.append(
+            {
+                "book_dir": str(book_dir),
+                "book_id": book_dir.name,
+                "title": progress.title,
+                "title_vi": progress.title_vi,
+                "total_chapters": len(progress.chapters),
+                "translated": translated,
+                "crawled": crawled,
+                "pending": pending,
+                "errors": errors,
+                "last_settings": last_settings,
+                "last_run_at": last_run_at,
+            }
+        )
 
     return resumable
 

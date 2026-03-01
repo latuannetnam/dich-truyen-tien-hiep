@@ -3,16 +3,14 @@
 import csv
 import json
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from dich_truyen.translator.term_scorer import TermScorer
     from dich_truyen.translator.style import StyleTemplate
+    from dich_truyen.translator.term_scorer import TermScorer
 
-from pydantic import BaseModel, Field
 import structlog
-
-from dich_truyen.config import get_config
+from pydantic import BaseModel, Field
 
 logger = structlog.get_logger()
 
@@ -64,9 +62,7 @@ class Glossary:
         """
         if entry.chinese in self._index:
             # Update existing
-            idx = next(
-                i for i, e in enumerate(self.entries) if e.chinese == entry.chinese
-            )
+            idx = next(i for i, e in enumerate(self.entries) if e.chinese == entry.chinese)
             self.entries[idx] = entry
         else:
             self.entries.append(entry)
@@ -126,10 +122,20 @@ class Glossary:
         entries_to_use = self.entries
         if max_entries and len(self.entries) > max_entries:
             # Priority order: characters first, then other categories
-            priority_order = ["character", "realm", "technique", "location", "item", "organization", "general"]
+            priority_order = [
+                "character",
+                "realm",
+                "technique",
+                "location",
+                "item",
+                "organization",
+                "general",
+            ]
             sorted_entries = sorted(
                 self.entries,
-                key=lambda e: priority_order.index(e.category) if e.category in priority_order else 99
+                key=lambda e: (
+                    priority_order.index(e.category) if e.category in priority_order else 99
+                ),
             )
             entries_to_use = sorted_entries[:max_entries]
 
@@ -161,51 +167,58 @@ class Glossary:
         max_entries: int = 100,
     ) -> list[GlossaryEntry]:
         """Get glossary entries relevant to a specific chunk.
-        
+
         If a scorer is provided, uses TF-IDF to rank terms by relevance.
         Otherwise falls back to simple presence check with category priority.
-        
+
         Args:
             chunk: Text chunk to find relevant entries for
             scorer: Optional TermScorer for TF-IDF based ranking
             max_entries: Maximum entries to return
-            
+
         Returns:
             List of relevant GlossaryEntry items, sorted by relevance
         """
         if not self.entries:
             return []
-        
+
         if scorer and scorer.is_fitted():
             # TF-IDF based selection
             scores = scorer.score_for_chunk(chunk)
-            
+
             # Get entries that have scores (present in chunk)
             scored_entries = [
                 (entry, scores.get(entry.chinese, 0))
                 for entry in self.entries
                 if entry.chinese in scores
             ]
-            
+
             # Sort by score descending
             scored_entries.sort(key=lambda x: -x[1])
-            
+
             # Take top entries
             return [entry for entry, _ in scored_entries[:max_entries]]
         else:
             # Fallback: simple presence check with category priority
-            priority_order = ["character", "realm", "technique", "location", "item", "organization", "general"]
-            
-            relevant = [
-                entry for entry in self.entries
-                if entry.chinese in chunk
+            priority_order = [
+                "character",
+                "realm",
+                "technique",
+                "location",
+                "item",
+                "organization",
+                "general",
             ]
-            
+
+            relevant = [entry for entry in self.entries if entry.chinese in chunk]
+
             # Sort by category priority
             relevant.sort(
-                key=lambda e: priority_order.index(e.category) if e.category in priority_order else 99
+                key=lambda e: (
+                    priority_order.index(e.category) if e.category in priority_order else 99
+                )
             )
-            
+
             return relevant[:max_entries]
 
     def format_relevant_entries(
@@ -215,22 +228,22 @@ class Glossary:
         max_entries: int = 100,
     ) -> str:
         """Format relevant glossary entries for a specific chunk.
-        
+
         Combines get_relevant_entries with formatting.
-        
+
         Args:
             chunk: Text chunk to find relevant entries for
             scorer: Optional TermScorer for TF-IDF based ranking
             max_entries: Maximum entries to include
-            
+
         Returns:
             Formatted string for LLM prompt
         """
         entries = self.get_relevant_entries(chunk, scorer, max_entries)
-        
+
         if not entries:
             return ""
-        
+
         # Group by category
         lines = []
         for category in self.CATEGORIES:
@@ -264,9 +277,7 @@ class Glossary:
         """
         path = Path(path)
         with open(path, "w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(
-                f, fieldnames=["chinese", "vietnamese", "category", "notes"]
-            )
+            writer = csv.DictWriter(f, fieldnames=["chinese", "vietnamese", "category", "notes"])
             writer.writeheader()
             for entry in self.entries:
                 writer.writerow(entry.model_dump())
@@ -395,30 +406,31 @@ async def generate_glossary_from_samples(
     Returns:
         Generated glossary
     """
-    from dich_truyen.translator.llm import LLMClient
     import re
 
+    from dich_truyen.translator.llm import LLMClient
+
     llm = LLMClient(task="glossary")
-    
+
     # Determine character naming rule based on style
     character_naming_rule = _get_character_naming_rule(style)
-    
+
     # Process samples in batches of 5 to avoid token limits
-    BATCH_SIZE = 5
+    batch_size = 5
     all_entries: list[GlossaryEntry] = []
-    
+
     # Calculate entries per batch
-    num_batches = (len(sample_texts) + BATCH_SIZE - 1) // BATCH_SIZE
+    num_batches = (len(sample_texts) + batch_size - 1) // batch_size
     entries_per_batch = max(10, min_entries // max(1, num_batches))
-    
+
     logger.info("glossary_batch_start", samples=len(sample_texts), batches=num_batches)
-    
-    for batch_idx in range(0, len(sample_texts), BATCH_SIZE):
-        batch = sample_texts[batch_idx:batch_idx + BATCH_SIZE]
-        batch_num = batch_idx // BATCH_SIZE + 1
-        
+
+    for batch_idx in range(0, len(sample_texts), batch_size):
+        batch = sample_texts[batch_idx : batch_idx + batch_size]
+        batch_num = batch_idx // batch_size + 1
+
         logger.debug("glossary_batch", batch=batch_num, total=num_batches, samples=len(batch))
-        
+
         # Combine batch texts
         combined = "\n\n---\n\n".join(batch)
 
@@ -458,7 +470,7 @@ async def generate_glossary_from_samples(
         if entry.chinese not in seen:
             seen.add(entry.chinese)
             unique_entries.append(entry)
-    
+
     logger.info("glossary_generated", unique_entries=len(unique_entries))
 
     # Limit to max_entries
@@ -520,19 +532,20 @@ async def extract_new_terms_from_chapter(
     Returns:
         List of new GlossaryEntry items (empty if none found)
     """
-    from dich_truyen.translator.llm import LLMClient
     import re
+
+    from dich_truyen.translator.llm import LLMClient
 
     # Only analyze first portion to save tokens
     text_sample = chinese_text[:2000] if len(chinese_text) > 2000 else chinese_text
-    
+
     # Get existing terms for deduplication
     existing_terms = ", ".join([e.chinese for e in existing_glossary.entries[:200]])
     if not existing_terms:
         existing_terms = "(chưa có)"
 
     llm = LLMClient(task="glossary")
-    
+
     # Get character naming rule based on style
     character_naming_rule = _get_character_naming_rule(style)
 
@@ -569,31 +582,30 @@ async def extract_new_terms_from_chapter(
 
 def _get_character_naming_rule(style: Optional["StyleTemplate"]) -> str:
     """Extract character naming rule from style template.
-    
+
     Args:
         style: Style template with guidelines
-        
+
     Returns:
         Formatted character naming rule for LLM prompt
     """
     if not style or not style.guidelines:
         # Default: use Sino-Vietnamese for xianxia/wuxia genres
         return "**Quy tắc dịch tên**: Dịch tên nhân vật và địa danh theo phiên âm Hán-Việt (ví dụ: 陈平安 → Trần Bình An)."
-    
+
     # Extract naming-related guidelines from style
     naming_rules = []
     keywords = ["tên", "nhân vật", "địa danh", "chức danh", "vật phẩm", "name", "character"]
-    
+
     for guideline in style.guidelines:
         guideline_lower = guideline.lower()
         if any(kw in guideline_lower for kw in keywords):
             naming_rules.append(guideline)
-    
+
     if naming_rules:
         # Use actual guidelines from style
         rules_text = "\n".join(f"- {rule}" for rule in naming_rules[:5])  # Limit to 5 rules
         return f"**Quy tắc dịch tên từ style '{style.name}':**\n{rules_text}"
-    
+
     # Fallback to default Sino-Vietnamese
     return "**Quy tắc dịch tên**: Dịch tên nhân vật và địa danh theo phiên âm Hán-Việt (ví dụ: 陈平安 → Trần Bình An)."
-

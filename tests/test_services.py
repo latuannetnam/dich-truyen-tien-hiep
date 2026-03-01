@@ -11,7 +11,6 @@ import pytest
 from dich_truyen.services.book_service import BookService
 from dich_truyen.services.style_service import StyleService
 
-
 # --- BookService ---
 
 
@@ -21,31 +20,33 @@ def books_dir(tmp_path: Path) -> Path:
     book_dir = tmp_path / "test-book"
     book_dir.mkdir()
     (book_dir / "book.json").write_text(
-        json.dumps({
-            "url": "https://example.com/book",
-            "title": "测试书",
-            "title_vi": "Sách Test",
-            "author": "作者",
-            "author_vi": "Tác Giả",
-            "encoding": "utf-8",
-            "chapters": [
-                {
-                    "index": 1,
-                    "id": "ch1",
-                    "title_cn": "第一章",
-                    "title_vi": "Chương 1",
-                    "url": "https://example.com/ch1",
-                    "status": "translated",
-                },
-                {
-                    "index": 2,
-                    "id": "ch2",
-                    "title_cn": "第二章",
-                    "url": "https://example.com/ch2",
-                    "status": "crawled",
-                },
-            ],
-        }),
+        json.dumps(
+            {
+                "url": "https://example.com/book",
+                "title": "测试书",
+                "title_vi": "Sách Test",
+                "author": "作者",
+                "author_vi": "Tác Giả",
+                "encoding": "utf-8",
+                "chapters": [
+                    {
+                        "index": 1,
+                        "id": "ch1",
+                        "title_cn": "第一章",
+                        "title_vi": "Chương 1",
+                        "url": "https://example.com/ch1",
+                        "status": "translated",
+                    },
+                    {
+                        "index": 2,
+                        "id": "ch2",
+                        "title_cn": "第二章",
+                        "url": "https://example.com/ch2",
+                        "status": "crawled",
+                    },
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     # Create chapter content

@@ -70,7 +70,7 @@ class ConfigService:
         prefix_map = self._get_prefix_map()
 
         write_vars: dict[str, str] = {}  # Non-default values to write
-        comment_vars: set[str] = set()   # Default values to comment out
+        comment_vars: set[str] = set()  # Default values to comment out
 
         for section, values in updates.items():
             if not isinstance(values, dict):

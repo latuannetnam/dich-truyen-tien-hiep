@@ -5,9 +5,9 @@ import re
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
+import structlog
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
-import structlog
 
 from dich_truyen.config import LLMConfig
 from dich_truyen.translator.llm import LLMClient
@@ -128,7 +128,10 @@ class PatternDiscovery:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an expert at analyzing HTML structure. Return only valid JSON.",
+                    "content": (
+                        "You are an expert at analyzing HTML structure."
+                        " Return only valid JSON."
+                    ),
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -137,18 +140,23 @@ class PatternDiscovery:
         )
 
         result_text = response.choices[0].message.content
-        
+
         # Handle None content
         if result_text is None:
             logger.warning("llm_empty_response", page="index")
             result_text = "{}"
-        
+
         result_text = result_text.strip()
 
         # Try to extract JSON from response
         result = self._parse_json_response(result_text)
-        
-        logger.debug("index_page_analysis", chapter_selector=result.get("chapter_selector", "a"), encoding=result.get("encoding", "utf-8"), has_pagination=result.get("has_pagination", False))
+
+        logger.debug(
+            "index_page_analysis",
+            chapter_selector=result.get("chapter_selector", "a"),
+            encoding=result.get("encoding", "utf-8"),
+            has_pagination=result.get("has_pagination", False),
+        )
 
         return DiscoveredBook(
             title=result.get("title", "Unknown"),
@@ -176,9 +184,11 @@ class PatternDiscovery:
             tag.decompose()
 
         truncated_html = str(soup)[:15000]
-        
+
         # Debug: Log HTML size
-        logger.debug("chapter_page_html", original_size=len(html), truncated_size=len(truncated_html))
+        logger.debug(
+            "chapter_page_html", original_size=len(html), truncated_size=len(truncated_html)
+        )
 
         prompt = CHAPTER_PATTERN_PROMPT.format(url=url, html=truncated_html)
 
@@ -196,30 +206,34 @@ class PatternDiscovery:
         )
 
         result_text = response.choices[0].message.content
-        
-        logger.debug("llm_chapter_response", finish_reason=response.choices[0].finish_reason, content_is_none=(result_text is None))
+
+        logger.debug(
+            "llm_chapter_response",
+            finish_reason=response.choices[0].finish_reason,
+            content_is_none=(result_text is None),
+        )
         if result_text:
             logger.debug("llm_chapter_preview", preview=result_text[:100])
-        
 
-        
         # Handle None content
         if result_text is None:
             logger.warning("llm_empty_response", page="chapter")
             result_text = "{}"
-        
+
         result_text = result_text.strip()
         result = self._parse_json_response(result_text)
-        
+
         # Log extracted patterns
         title_sel = result.get("title_selector", "h1")
         content_sel = result.get("content_selector", "#content")
         remove_els = result.get("elements_to_remove", ["script", "style", ".toplink", "table"])
-        
-        logger.debug("chapter_page_analysis", title_selector=title_sel, content_selector=content_sel, elements_to_remove=remove_els)
 
-
-
+        logger.debug(
+            "chapter_page_analysis",
+            title_selector=title_sel,
+            content_selector=content_sel,
+            elements_to_remove=remove_els,
+        )
 
         return BookPatterns(
             title_selector=title_sel,
@@ -338,7 +352,7 @@ class PatternDiscovery:
 
         # Try to extract content with the specified selector
         content_elem = soup.select_one(patterns.content_selector)
-        
+
         if content_elem:
             content = self._extract_text_with_breaks(content_elem)
             # Check if we got meaningful content (more than just whitespace)
@@ -352,16 +366,16 @@ class PatternDiscovery:
             # Remove navigation, header, footer-like elements
             for tag in body.find_all(["header", "footer", "nav", "aside"]):
                 tag.decompose()
-            
+
             # Remove the title element to avoid duplication
             if title_elem:
                 try:
                     title_elem.decompose()
                 except Exception:
                     pass
-            
+
             content = self._extract_text_with_breaks(body)
-            
+
             # Clean up common navigation text patterns
             content_lines = content.split("\n\n")
             filtered_lines = []
@@ -373,9 +387,9 @@ class PatternDiscovery:
                 if any(nav in line for nav in ["上一章", "下一章", "目录", "返回", "首页"]):
                     continue
                 filtered_lines.append(line)
-            
+
             content = "\n\n".join(filtered_lines)
-            
+
         return title, content
 
     def _extract_text_with_breaks(self, element) -> str:

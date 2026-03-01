@@ -1,13 +1,11 @@
 """Translation style template management."""
 
-import yaml
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, Field
 import structlog
-
-from dich_truyen.config import get_config
+import yaml
+from pydantic import BaseModel, Field
 
 logger = structlog.get_logger()
 

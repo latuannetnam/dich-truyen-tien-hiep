@@ -5,11 +5,9 @@ suitable for REST endpoints and future CLI refactoring.
 """
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from dich_truyen.exporter.calibre import CalibreExporter, ExportResult, export_book
-from dich_truyen.exporter.epub_assembler import DirectEPUBAssembler
-from dich_truyen.utils.progress import BookProgress
+from dich_truyen.exporter.calibre import CalibreExporter, export_book
 
 
 class ExportService:

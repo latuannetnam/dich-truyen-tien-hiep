@@ -145,7 +145,7 @@ def test_import_style_invalid_yaml(svc: StyleService) -> None:
 def test_import_style_name_collision(svc: StyleService) -> None:
     """Import with existing name raises ValueError."""
     svc.create_style(VALID_STYLE)
-    yaml_content = f"""
+    yaml_content = """
 name: my_custom
 description: Collision
 guidelines:

@@ -151,7 +151,7 @@ class HTMLAssembler:
             if new_pattern_file.exists():
                 chapters_with_files.append((chapter, new_pattern_file))
                 continue
-            
+
             # Fall back to old pattern: 0001_*.txt
             old_pattern = f"{chapter.index:04d}_*.txt"
             files = list(self.translated_dir.glob(old_pattern))
@@ -349,6 +349,7 @@ async def format_book(
     if cover:
         # Copy cover to book directory
         import shutil
+
         dest_cover = book_dir / "cover" / cover.name
         dest_cover.parent.mkdir(exist_ok=True)
         shutil.copy(cover, dest_cover)

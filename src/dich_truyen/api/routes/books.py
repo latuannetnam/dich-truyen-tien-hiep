@@ -61,23 +61,25 @@ async def list_books() -> list[BookSummary]:
         for ch in progress.chapters:
             status_counts[ch.status] += 1
 
-        books.append(BookSummary(
-            id=book_dir.name,
-            title=progress.title,
-            title_vi=progress.title_vi,
-            author=progress.author,
-            author_vi=progress.author_vi,
-            url=progress.url,
-            total_chapters=len(progress.chapters),
-            pending_chapters=status_counts[ChapterStatus.PENDING],
-            crawled_chapters=status_counts[ChapterStatus.CRAWLED],
-            translated_chapters=status_counts[ChapterStatus.TRANSLATED],
-            formatted_chapters=status_counts.get(ChapterStatus.FORMATTED, 0),
-            exported_chapters=status_counts.get(ChapterStatus.EXPORTED, 0),
-            error_chapters=status_counts[ChapterStatus.ERROR],
-            created_at=str(progress.created_at) if progress.created_at else None,
-            updated_at=str(progress.updated_at) if progress.updated_at else None,
-        ))
+        books.append(
+            BookSummary(
+                id=book_dir.name,
+                title=progress.title,
+                title_vi=progress.title_vi,
+                author=progress.author,
+                author_vi=progress.author_vi,
+                url=progress.url,
+                total_chapters=len(progress.chapters),
+                pending_chapters=status_counts[ChapterStatus.PENDING],
+                crawled_chapters=status_counts[ChapterStatus.CRAWLED],
+                translated_chapters=status_counts[ChapterStatus.TRANSLATED],
+                formatted_chapters=status_counts.get(ChapterStatus.FORMATTED, 0),
+                exported_chapters=status_counts.get(ChapterStatus.EXPORTED, 0),
+                error_chapters=status_counts[ChapterStatus.ERROR],
+                created_at=str(progress.created_at) if progress.created_at else None,
+                updated_at=str(progress.updated_at) if progress.updated_at else None,
+            )
+        )
 
     return books
 
@@ -156,15 +158,17 @@ async def get_book(book_id: str) -> BookDetail:
     for ch in progress.chapters:
         has_raw = _find_chapter_file(raw_dir, ch.index) is not None
         has_translated = _find_chapter_file(translated_dir, ch.index) is not None
-        chapters.append(ChapterDetail(
-            index=ch.index,
-            id=ch.id,
-            title_cn=ch.title_cn,
-            title_vi=ch.title_vi,
-            status=ch.status.value,
-            has_raw=has_raw,
-            has_translated=has_translated,
-        ))
+        chapters.append(
+            ChapterDetail(
+                index=ch.index,
+                id=ch.id,
+                title_cn=ch.title_cn,
+                title_vi=ch.title_vi,
+                status=ch.status.value,
+                has_raw=has_raw,
+                has_translated=has_translated,
+            )
+        )
 
     return BookDetail(
         id=book_id,
@@ -198,4 +202,3 @@ async def get_chapter_translated(book_id: str, chapter_num: int) -> ChapterConte
         raise HTTPException(status_code=404, detail="Chapter not found")
     content = file_path.read_text(encoding="utf-8")
     return ChapterContent(chapter_index=chapter_num, content=content)
-

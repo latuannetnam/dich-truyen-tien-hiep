@@ -1,9 +1,5 @@
 """Tests for the event pub/sub system."""
 
-import asyncio
-
-import pytest
-
 from dich_truyen.services.events import EventBus, PipelineEvent
 
 
@@ -33,7 +29,10 @@ def test_event_bus_unsubscribe():
     """Unsubscribed callback no longer receives events."""
     received = []
     bus = EventBus()
-    callback = lambda event: received.append(event)
+
+    def callback(event):
+        received.append(event)
+
     sub_id = bus.subscribe(callback)
     bus.emit(PipelineEvent(type="first", data={}))
     bus.unsubscribe(sub_id)

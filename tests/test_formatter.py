@@ -1,10 +1,9 @@
 """Unit tests for the formatter module."""
 
 import pytest
-from pathlib import Path
 
-from dich_truyen.formatter.metadata import BookMetadataManager
 from dich_truyen.formatter.assembler import HTMLAssembler
+from dich_truyen.formatter.metadata import BookMetadataManager
 from dich_truyen.utils.progress import BookProgress, Chapter, ChapterStatus
 
 
@@ -237,7 +236,13 @@ class TestVietnameseTypography:
             title="Kiếm Lai",
             author="Tác giả",
             chapters=[
-                Chapter(index=1, id="1", title_cn="Test", url="http://example.com/1", status=ChapterStatus.TRANSLATED),
+                Chapter(
+                    index=1,
+                    id="1",
+                    title_cn="Test",
+                    url="http://example.com/1",
+                    status=ChapterStatus.TRANSLATED,
+                ),
             ],
         )
         progress.save(book_dir)
@@ -251,9 +256,7 @@ Trần Bình An đứng trên ngọn núi, nhìn xa xăm về phía chân trời
 
 Hắn quay lại, ánh mắt sắc bén như kiếm."""
 
-        (book_dir / "translated" / "0001_test.txt").write_text(
-            vietnamese_text, encoding="utf-8"
-        )
+        (book_dir / "translated" / "0001_test.txt").write_text(vietnamese_text, encoding="utf-8")
 
         # Assemble
         assembler = HTMLAssembler(book_dir)

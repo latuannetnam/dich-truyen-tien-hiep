@@ -2,9 +2,8 @@
 
 import asyncio
 import re
-from datetime import datetime
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from dich_truyen.translator.term_scorer import SimpleTermScorer
@@ -59,18 +58,20 @@ class TranslationEngine:
 
     def _is_dialogue_paragraph(self, para: str) -> bool:
         """Check if paragraph contains dialogue that should stay together.
-        
+
         Chinese dialogue typically uses "" or 「」 quotes.
         """
         # Check for dialogue markers
-        has_cn_quotes = '"' in para or '"' in para or '「' in para or '」' in para
+        has_cn_quotes = '"' in para or '"' in para or "「" in para or "」" in para
         # Also check for dialogue attribution patterns
-        has_attribution = any(marker in para for marker in ['说道', '道：', '说：', '问道', '笑道', '叫道'])
+        has_attribution = any(
+            marker in para for marker in ["说道", "道：", "说：", "问道", "笑道", "叫道"]
+        )
         return has_cn_quotes or has_attribution
 
     def _find_dialogue_block_end(self, paragraphs: list[str], start_idx: int) -> int:
         """Find the end of a dialogue block (consecutive dialogue paragraphs).
-        
+
         Returns the index of the last paragraph in the dialogue block.
         """
         end_idx = start_idx
@@ -79,7 +80,11 @@ class TranslationEngine:
                 end_idx = i
             else:
                 # Non-dialogue paragraph - check if it's short (could be narration between dialogue)
-                if len(paragraphs[i]) < 100 and i + 1 < len(paragraphs) and self._is_dialogue_paragraph(paragraphs[i + 1]):
+                if (
+                    len(paragraphs[i]) < 100
+                    and i + 1 < len(paragraphs)
+                    and self._is_dialogue_paragraph(paragraphs[i + 1])
+                ):
                     # Short narration between dialogue, include it
                     continue
                 else:
@@ -115,7 +120,7 @@ class TranslationEngine:
             # Check if this starts a dialogue block
             if self._is_dialogue_paragraph(para):
                 dialogue_end = self._find_dialogue_block_end(paragraphs, i)
-                dialogue_block = paragraphs[i:dialogue_end + 1]
+                dialogue_block = paragraphs[i : dialogue_end + 1]
                 dialogue_text = "\n\n".join(dialogue_block)
                 dialogue_length = len(dialogue_text)
 
@@ -125,16 +130,18 @@ class TranslationEngine:
                     current_length += dialogue_length + 2
                     i = dialogue_end + 1
                     continue
-                
+
                 # If dialogue block fits in a new chunk, flush current and start new
-                if dialogue_length <= chunk_size * 1.2:  # Allow 20% overflow to keep dialogue together
+                if (
+                    dialogue_length <= chunk_size * 1.2
+                ):  # Allow 20% overflow to keep dialogue together
                     if current_chunk:
                         chunks.append("\n\n".join(current_chunk))
                     current_chunk = dialogue_block
                     current_length = dialogue_length
                     i = dialogue_end + 1
                     continue
-                
+
                 # Dialogue block too large - must split it (fall through to normal processing)
 
             # Normal paragraph processing
@@ -186,76 +193,75 @@ class TranslationEngine:
 
     def annotate_with_glossary(self, text: str, max_terms: int = 30) -> str:
         """Annotate source text with glossary translations inline.
-        
+
         Inserts glossary terms in format: 叶凡<Diệp Phàm>
         This enforces exact term usage by the LLM.
-        
+
         Args:
             text: Source Chinese text to annotate
             max_terms: Maximum number of terms to annotate (most relevant)
-            
+
         Returns:
             Annotated text with <Term> tags
         """
         if not self.glossary or len(self.glossary) == 0:
             return text
-        
+
         # Get relevant terms for this text using TF-IDF scorer if available
         relevant_entries = self.glossary.get_relevant_entries(
-            text, 
-            scorer=self.term_scorer,
-            max_entries=max_terms
+            text, scorer=self.term_scorer, max_entries=max_terms
         )
-        
+
         if not relevant_entries:
             return text
-        
+
         # Sort by length descending to prioritize longer terms (避免部分匹配)
         relevant_entries.sort(key=lambda e: -len(e.chinese))
-        
+
         # Apply annotations with word boundaries
         for entry in relevant_entries:
             # Use whole-word boundary to avoid partial matches
             # (?<![...]) negative lookbehind: not preceded by letter/hanzi
             # (?![...]) negative lookahead: not followed by letter/hanzi
             pattern = re.compile(
-                rf'(?<![a-zA-Z\u4e00-\u9fff])({re.escape(entry.chinese)})(?![a-zA-Z\u4e00-\u9fff])'
+                rf"(?<![a-zA-Z\u4e00-\u9fff])({re.escape(entry.chinese)})(?![a-zA-Z\u4e00-\u9fff])"
             )
             # Replace up to 5 occurrences per term to avoid bloat
-            text = pattern.sub(rf'\1<{entry.vietnamese}>', text, count=5)
-        
+            text = pattern.sub(rf"\1<{entry.vietnamese}>", text, count=5)
+
         return text
 
     def extract_state(self, response: str) -> tuple[str, dict]:
         """Extract translation and narrative state from LLM response.
-        
+
         Parses the ---STATE--- marker and JSON block from the response.
         Falls back to empty state on parse errors.
-        
+
         Args:
             response: LLM response text with optional state block
-            
+
         Returns:
             Tuple of (translation_text, state_dict)
         """
         if "---STATE---" not in response:
             return response.strip(), {}
-        
+
         try:
             parts = response.split("---STATE---", 1)
             translation = parts[0].strip()
             state_json = parts[1].strip()
-            
+
             # Parse JSON robustly
             import json
+
             state = json.loads(state_json)
-            
+
             # Validate state structure (optional fields)
             if not isinstance(state, dict):
                 return translation, {}
-            
+
             return translation, state
-            
+
         except (json.JSONDecodeError, IndexError, Exception):
             # Fallback: return full response with empty state
             return response.strip(), {}
@@ -391,7 +397,7 @@ class TranslationEngine:
                 last_error = e
                 if attempt < max_retries:
                     logger.warning("polish_retry", attempt=attempt + 1, error=str(e))
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    await asyncio.sleep(2**attempt)  # Exponential backoff
 
         # All retries failed - fallback to draft
         logger.warning("polish_failed", attempts=max_retries + 1, error=str(last_error))
@@ -406,16 +412,15 @@ class TranslationEngine:
         Returns:
             List of dicts with 'main_text' and 'context_text' keys
         """
-        chunk_size = self.config.chunk_size
         overlap = self.config.chunk_overlap
-        
+
         # First split by paragraphs using existing method
         raw_chunks = self.chunk_text(text)
-        
+
         if len(raw_chunks) <= 1:
             # Single chunk, no context needed
             return [{"main_text": raw_chunks[0] if raw_chunks else "", "context_text": None}]
-        
+
         result = []
         for i, chunk in enumerate(raw_chunks):
             if i == 0:
@@ -426,7 +431,7 @@ class TranslationEngine:
                 prev_chunk = raw_chunks[i - 1]
                 context = prev_chunk[-overlap:] if len(prev_chunk) > overlap else prev_chunk
                 result.append({"main_text": chunk, "context_text": context})
-        
+
         return result
 
     async def translate_chapter(
@@ -436,7 +441,7 @@ class TranslationEngine:
         progress_callback=None,
     ) -> str:
         """Translate an entire chapter file using sequential chunk processing.
-        
+
         Each chunk uses the TRANSLATED Vietnamese output from the previous chunk
         as context, improving pronoun resolution and term consistency.
 
@@ -455,13 +460,13 @@ class TranslationEngine:
         # Split into chunks
         chunks = self.chunk_text(content)
         total_chunks = len(chunks)
-        
+
         if total_chunks == 0:
             return ""
 
         translated_chunks = []
         overlap = self.config.chunk_overlap
-        
+
         # State tracking variables
         current_state = {}  # Narrative state from previous chunk
         state_extraction_failures = 0  # Counter for failed state extractions
@@ -475,14 +480,18 @@ class TranslationEngine:
             # SOLUTION 1: Annotate with glossary terms if enabled
             if self.config.enable_glossary_annotation:
                 chunk = self.annotate_with_glossary(chunk, max_terms=30)
-            
+
             # Build context from previous chunk
             if idx == 0:
                 context_text = None
             else:
                 prev_translated = translated_chunks[-1]
                 # Take last 'overlap' characters as context
-                context_text = prev_translated[-overlap:] if len(prev_translated) > overlap else prev_translated
+                context_text = (
+                    prev_translated[-overlap:]
+                    if len(prev_translated) > overlap
+                    else prev_translated
+                )
 
             # SOLUTION 2: Inject state into translation call if enabled and available
             response = await self.translate_chunk_with_context_marker(
@@ -490,11 +499,11 @@ class TranslationEngine:
                 context_text=context_text,
                 narrative_state=current_state if state_tracking_enabled else None,
             )
-            
+
             # Extract translation and state
             if state_tracking_enabled:
                 translated, new_state = self.extract_state(response)
-                
+
                 # Check if state extraction succeeded
                 if new_state:
                     current_state = new_state
@@ -507,11 +516,11 @@ class TranslationEngine:
                         current_state = {}
             else:
                 translated = response
-            
+
             # Reset state on scene breaks (detected by horizontal rules)
             if state_tracking_enabled and "---" in chunk and idx > 0:
                 current_state = {}
-            
+
             translated_chunks.append(translated)
 
         if progress_callback:
@@ -528,7 +537,11 @@ class TranslationEngine:
             result = await self._polish_translation(
                 source_chinese=content,
                 draft_vietnamese=draft_result,
-                progress_callback=lambda status: progress_callback(total_chunks, total_chunks, status) if progress_callback else None,
+                progress_callback=lambda status: (
+                    progress_callback(total_chunks, total_chunks, status)
+                    if progress_callback
+                    else None
+                ),
             )
         else:
             result = draft_result
@@ -562,7 +575,7 @@ class TranslationEngine:
             Translation result with statistics
         """
         from dich_truyen.utils.progress import parse_chapter_range
-        
+
         book_dir = Path(book_dir)
         raw_dir = book_dir / "raw"
         translated_dir = book_dir / "translated"
@@ -578,7 +591,7 @@ class TranslationEngine:
         # Apply chapter range filter if specified
         all_chapters = progress.chapters
         max_chapter = len(all_chapters)
-        
+
         if chapters_spec:
             indices = parse_chapter_range(chapters_spec, max_chapter)
             filtered_chapters = [c for c in all_chapters if c.index in indices]
@@ -588,12 +601,12 @@ class TranslationEngine:
         # Get chapters to translate based on status
         if resume:
             chapters_to_translate = [
-                c for c in filtered_chapters 
-                if c.status == ChapterStatus.CRAWLED
+                c for c in filtered_chapters if c.status == ChapterStatus.CRAWLED
             ]
         else:
             chapters_to_translate = [
-                c for c in filtered_chapters 
+                c
+                for c in filtered_chapters
                 if c.status in (ChapterStatus.CRAWLED, ChapterStatus.TRANSLATED)
             ]
 
@@ -628,7 +641,9 @@ class TranslationEngine:
 
         # Translate chapters with periodic logging
         for chapter in chapters_to_translate:
-            logger.info("translating_chapter", chapter=chapter.index, title=(chapter.title_cn or "")[:20])
+            logger.info(
+                "translating_chapter", chapter=chapter.index, title=(chapter.title_cn or "")[:20]
+            )
 
             try:
                 # Find source file
@@ -645,13 +660,12 @@ class TranslationEngine:
 
                 # Translate chapter title if not already done
                 if chapter.title_cn and not chapter.title_vi:
-                    chapter.title_vi = await self.llm.translate_title(
-                        chapter.title_cn, "chapter"
-                    )
+                    chapter.title_vi = await self.llm.translate_title(chapter.title_cn, "chapter")
 
                 # Progressive glossary: extract new terms from this chapter
                 if self.config.progressive_glossary and self.glossary:
                     from dich_truyen.translator.glossary import extract_new_terms_from_chapter
+
                     with open(source_path, "r", encoding="utf-8") as f:
                         chapter_content = f.read()
                     new_terms = await extract_new_terms_from_chapter(
@@ -670,9 +684,7 @@ class TranslationEngine:
                 error_msg = f"Chapter {chapter.index}: {str(e)}"
                 result.errors.append(error_msg)
                 result.failed += 1
-                progress.update_chapter_status(
-                    chapter.index, ChapterStatus.ERROR, str(e)
-                )
+                progress.update_chapter_status(chapter.index, ChapterStatus.ERROR, str(e))
                 logger.error("chapter_translation_error", chapter=chapter.index, error=str(e))
 
             # Save progress after each chapter to prevent data loss
@@ -713,10 +725,10 @@ async def setup_translation(
         Configured TranslationEngine
     """
     from dich_truyen.config import log_llm_config_summary
-    
+
     # Show LLM configuration
     log_llm_config_summary()
-    
+
     book_dir = Path(book_dir)
 
     # Load style
@@ -749,16 +761,22 @@ async def setup_translation(
         # Read chapters for sampling
         raw_dir = book_dir / "raw"
         all_files = sorted(raw_dir.glob("*.txt"))
-        
+
         # Select sample chapters
         if random_sample and len(all_files) > sample_chapter_count:
             import random
+
             sample_files = random.sample(all_files, sample_chapter_count)
-            logger.debug("glossary_sampling", method="random", selected=sample_chapter_count, available=len(all_files))
+            logger.debug(
+                "glossary_sampling",
+                method="random",
+                selected=sample_chapter_count,
+                available=len(all_files),
+            )
         else:
             sample_files = all_files[:sample_chapter_count]
             logger.debug("glossary_sampling", method="sequential", selected=len(sample_files))
-        
+
         samples = []
         for txt_file in sample_files:
             with open(txt_file, "r", encoding="utf-8") as f:
@@ -782,24 +800,34 @@ async def setup_translation(
     if progress and not progress.title_vi:
         logger.info("translating_metadata")
         llm = LLMClient(task="translate")
-        
+
         # Translate book title
         if progress.title:
             progress.title_vi = await llm.translate_title(progress.title, "book")
-            logger.debug("metadata_translated", field="title", original=progress.title, translated=progress.title_vi)
+            logger.debug(
+                "metadata_translated",
+                field="title",
+                original=progress.title,
+                translated=progress.title_vi,
+            )
 
         # Translate author name
         if progress.author:
             progress.author_vi = await llm.translate_title(progress.author, "author")
-            logger.debug("metadata_translated", field="author", original=progress.author, translated=progress.author_vi)
-        
+            logger.debug(
+                "metadata_translated",
+                field="author",
+                original=progress.author,
+                translated=progress.author_vi,
+            )
+
         progress.save(book_dir)
 
     # Initialize TF-IDF scorer for intelligent glossary selection
     term_scorer = None
     if len(glossary) > 0:
         from dich_truyen.translator.term_scorer import SimpleTermScorer
-        
+
         logger.debug("tfidf_scorer_init")
 
         # Read all chapter contents for IDF calculation
@@ -838,7 +866,7 @@ async def translate_chapter_titles(book_dir: Path, chapters_spec: Optional[str] 
         chapters_spec: Optional chapter range
     """
     from dich_truyen.utils.progress import parse_chapter_range
-    
+
     book_dir = Path(book_dir)
     progress = BookProgress.load(book_dir)
     if not progress:
@@ -847,7 +875,7 @@ async def translate_chapter_titles(book_dir: Path, chapters_spec: Optional[str] 
     # Apply chapter range filter if specified
     all_chapters = progress.chapters
     max_chapter = len(all_chapters)
-    
+
     if chapters_spec:
         indices = parse_chapter_range(chapters_spec, max_chapter)
         chapters_to_translate = [c for c in all_chapters if c.index in indices and not c.title_vi]
@@ -865,7 +893,12 @@ async def translate_chapter_titles(book_dir: Path, chapters_spec: Optional[str] 
     for chapter in chapters_to_translate:
         if chapter.title_cn:
             chapter.title_vi = await llm.translate_title(chapter.title_cn, "chapter")
-            logger.debug("chapter_title_translated", chapter=chapter.index, original=chapter.title_cn, translated=chapter.title_vi)
+            logger.debug(
+                "chapter_title_translated",
+                chapter=chapter.index,
+                original=chapter.title_cn,
+                translated=chapter.title_vi,
+            )
 
     progress.save(book_dir)
     logger.info("chapter_titles_complete")
