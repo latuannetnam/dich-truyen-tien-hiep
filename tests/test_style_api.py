@@ -85,7 +85,7 @@ def test_duplicate_style(client: TestClient) -> None:
 
 
 def test_import_style(client: TestClient) -> None:
-    """POST /api/v1/styles/import accepts YAML."""
+    """POST /api/v1/styles/import validates YAML (does not save)."""
     yaml_content = """
 name: imported
 description: From YAML
@@ -94,7 +94,7 @@ guidelines:
 tone: formal
 """
     r = client.post("/api/v1/styles/import", json={"yaml_content": yaml_content})
-    assert r.status_code == 201
+    assert r.status_code == 200
     assert r.json()["name"] == "imported"
 
 

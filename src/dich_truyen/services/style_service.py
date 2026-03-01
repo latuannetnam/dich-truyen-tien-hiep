@@ -177,13 +177,15 @@ class StyleService:
         }
 
     def import_style(self, yaml_content: str) -> dict[str, Any]:
-        """Import a style from YAML string.
+        """Validate and parse a YAML string into a style dict (does NOT save).
+
+        The caller should use create_style() to persist after user review.
 
         Args:
             yaml_content: YAML content string.
 
         Returns:
-            Imported style as dict.
+            Parsed style as dict (not saved to disk).
 
         Raises:
             ValueError: If YAML is invalid or name collision.
@@ -206,8 +208,19 @@ class StyleService:
         if template.name in self._manager.list_available():
             raise ValueError(f"Style '{template.name}' already exists")
 
-        self._manager.save(template)
-        return self.get_style(template.name)
+        return {
+            "name": template.name,
+            "description": template.description,
+            "guidelines": template.guidelines,
+            "vocabulary": template.vocabulary,
+            "tone": template.tone,
+            "examples": [
+                {"chinese": ex.get("chinese", ""), "vietnamese": ex.get("vietnamese", "")}
+                if isinstance(ex, dict)
+                else {"chinese": ex.chinese, "vietnamese": ex.vietnamese}
+                for ex in (template.examples or [])
+            ],
+        }
 
     def export_style(self, name: str) -> str:
         """Export a style as YAML string.

@@ -120,7 +120,7 @@ async def test_generate_style(svc: StyleService) -> None:
 
 
 def test_import_style(svc: StyleService, styles_dir: Path) -> None:
-    """Import valid YAML creates a style."""
+    """Import valid YAML validates and returns parsed style (not saved)."""
     yaml_content = """
 name: imported_style
 description: Imported from file
@@ -132,7 +132,8 @@ examples: []
 """
     result = svc.import_style(yaml_content)
     assert result["name"] == "imported_style"
-    assert (styles_dir / "imported_style.yaml").exists()
+    # import_style validates only; file is NOT created until create_style
+    assert not (styles_dir / "imported_style.yaml").exists()
 
 
 def test_import_style_invalid_yaml(svc: StyleService) -> None:

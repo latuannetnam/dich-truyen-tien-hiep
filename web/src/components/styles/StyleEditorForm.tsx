@@ -8,6 +8,7 @@ import {
   Sparkles,
   PenLine,
   Save,
+  Check,
   X,
   ChevronDown,
   ChevronUp,
@@ -51,6 +52,7 @@ export default function StyleEditorForm({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
   // AI Generate state
@@ -91,14 +93,16 @@ export default function StyleEditorForm({
     const errs: Record<string, string> = {};
     if (mode === "create" && !form.name.trim()) {
       errs.name = "Name is required";
-    }
-    if (mode === "create" && form.name && !/^[a-z][a-z0-9_]*$/.test(form.name)) {
+    } else if (mode === "create" && form.name && !/^[a-z][a-z0-9_]*$/.test(form.name)) {
       errs.name = "Use snake_case (lowercase letters, numbers, underscores)";
+    } else if (mode === "create" && form.name.trim().length > 0 && (form.name.trim().length < 3 || form.name.trim().length > 50)) {
+      errs.name = "Name must be 3-50 characters";
     }
     if (!form.description.trim()) {
       errs.description = "Description is required";
-    }
-    if (form.description.length > 200) {
+    } else if (form.description.trim().length < 5) {
+      errs.description = "Description must be at least 5 characters";
+    } else if (form.description.length > 200) {
       errs.description = "Description must be 200 characters or less";
     }
     if (!form.guidelines.some((g) => g.trim())) {
@@ -123,6 +127,9 @@ export default function StyleEditorForm({
         if (key.trim()) vocab[key.trim()] = value.trim();
       });
       await onSave({ ...form, vocabulary: vocab });
+      // Brief "Saved ✓" feedback
+      setShowSaved(true);
+      setTimeout(() => setShowSaved(false), 1000);
     } finally {
       setIsSaving(false);
     }
@@ -178,7 +185,7 @@ export default function StyleEditorForm({
       {mode === "shadow-edit" && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm">
           <PenLine size={16} className="shrink-0" />
-          <span>Customizing built-in style — your changes override the default</span>
+          <span>Customizing built-in style — your changes will override the default</span>
         </div>
       )}
 
@@ -199,7 +206,7 @@ export default function StyleEditorForm({
           className={`${inputClass} ${mode !== "create" ? "opacity-50 cursor-not-allowed" : ""}`}
         />
         {errors.name && (
-          <span id="name-error" className="text-red-400 text-xs mt-1 block" role="alert">
+          <span id="name-error" className="text-red-400 text-xs mt-1 block" aria-live="polite">
             {errors.name}
           </span>
         )}
@@ -221,7 +228,7 @@ export default function StyleEditorForm({
           className={inputClass}
         />
         {errors.description && (
-          <span id="desc-error" className="text-red-400 text-xs mt-1 block" role="alert">
+          <span id="desc-error" className="text-red-400 text-xs mt-1 block" aria-live="polite">
             {errors.description}
           </span>
         )}
@@ -252,7 +259,7 @@ export default function StyleEditorForm({
           Guidelines
         </label>
         {errors.guidelines && (
-          <span className="text-red-400 text-xs mb-1 block" role="alert">
+          <span className="text-red-400 text-xs mb-1 block" aria-live="polite">
             {errors.guidelines}
           </span>
         )}
@@ -478,6 +485,10 @@ export default function StyleEditorForm({
           {isSaving ? (
             <>
               <Loader2 size={16} className="animate-spin" /> Saving...
+            </>
+          ) : showSaved ? (
+            <>
+              <Check size={16} /> Saved
             </>
           ) : (
             <>

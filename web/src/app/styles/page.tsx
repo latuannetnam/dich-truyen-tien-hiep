@@ -247,12 +247,12 @@ export default function StylesPage() {
     if (!file) return;
     try {
       const text = await file.text();
+      // Validate YAML via API (does NOT save)
       const result = await importStyle(text);
-      showSuccess("Style imported");
-      loadStyles();
+      // Open CREATE mode pre-filled so user can review before saving
       setSelectedStyle(result);
       setSelectedStyleType("custom");
-      setPanelMode("view");
+      setPanelMode("create");
     } catch (err) {
       showError(err instanceof Error ? err.message : "Failed to import");
     }
@@ -695,7 +695,7 @@ export default function StylesPage() {
               {/* CREATE / EDIT / SHADOW-EDIT modes */}
               {(panelMode === "create" || panelMode === "edit" || panelMode === "shadow-edit") && (
                 <StyleEditorForm
-                  initialData={panelMode === "create" ? null : selectedStyle}
+                  initialData={selectedStyle}
                   mode={panelMode}
                   onSave={handleSave}
                   onCancel={handleCloseAttempt}

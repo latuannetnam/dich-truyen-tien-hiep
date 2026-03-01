@@ -1,17 +1,18 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
-import { CheckCircle, XCircle, X } from "lucide-react";
+import { CheckCircle, XCircle, AlertTriangle, X } from "lucide-react";
 
 interface Toast {
   id: number;
-  type: "success" | "error";
+  type: "success" | "error" | "warning";
   message: string;
 }
 
 interface ToastContextType {
   showSuccess: (message: string) => void;
   showError: (message: string) => void;
+  showWarning: (message: string) => void;
 }
 
 const ToastContext = createContext<ToastContextType | null>(null);
@@ -32,9 +33,13 @@ export default function ToastProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const addToast = useCallback(
-    (type: "success" | "error", message: string) => {
+    (type: "success" | "error" | "warning", message: string) => {
       const id = nextId++;
-      setToasts((prev) => [...prev, { id, type, message }]);
+      setToasts((prev) => {
+        const next = [...prev, { id, type, message }];
+        // Max 3 visible simultaneously
+        return next.length > 3 ? next.slice(-3) : next;
+      });
       const ms = type === "success" ? 3000 : 5000;
       setTimeout(() => removeToast(id), ms);
     },
@@ -51,12 +56,17 @@ export default function ToastProvider({ children }: { children: React.ReactNode 
     [addToast]
   );
 
+  const showWarning = useCallback(
+    (message: string) => addToast("warning", message),
+    [addToast]
+  );
+
   return (
-    <ToastContext.Provider value={{ showSuccess, showError }}>
+    <ToastContext.Provider value={{ showSuccess, showError, showWarning }}>
       {children}
       {/* Toast container */}
       <div
-        className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none"
+        className="fixed top-6 right-6 z-50 flex flex-col gap-3 pointer-events-none"
         aria-live="assertive"
         role="alert"
       >
@@ -75,10 +85,12 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
     requestAnimationFrame(() => setVisible(true));
   }, []);
 
-  const isSuccess = toast.type === "success";
-  const bgClass = isSuccess
-    ? "bg-[#10B981]/15 border-[#10B981]/30 text-[#10B981]"
-    : "bg-[#EF4444]/15 border-[#EF4444]/30 text-[#EF4444]";
+  const bgClass =
+    toast.type === "success"
+      ? "bg-[#10B981]/15 border-[#10B981]/30 text-[#10B981]"
+      : toast.type === "warning"
+        ? "bg-[#F59E0B]/15 border-[#F59E0B]/30 text-[#F59E0B]"
+        : "bg-[#EF4444]/15 border-[#EF4444]/30 text-[#EF4444]";
 
   return (
     <div
@@ -90,8 +102,10 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
         ${visible ? "translate-x-0 opacity-100" : "translate-x-8 opacity-0"}
       `}
     >
-      {isSuccess ? (
+      {toast.type === "success" ? (
         <CheckCircle size={18} className="shrink-0" aria-hidden="true" />
+      ) : toast.type === "warning" ? (
+        <AlertTriangle size={18} className="shrink-0" aria-hidden="true" />
       ) : (
         <XCircle size={18} className="shrink-0" aria-hidden="true" />
       )}

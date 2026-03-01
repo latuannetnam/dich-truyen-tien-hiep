@@ -48,7 +48,7 @@ class ImportRequest(BaseModel):
     yaml_content: str
 
 
-@router.post("/import", status_code=201)
+@router.post("/import")
 async def import_style(body: ImportRequest) -> dict[str, Any]:
     """Import a style from YAML content."""
     try:
@@ -128,9 +128,7 @@ class DuplicateRequest(BaseModel):
 
 
 @router.post("/{name}/duplicate", status_code=201)
-async def duplicate_style(
-    name: str, body: DuplicateRequest | None = None
-) -> dict[str, Any]:
+async def duplicate_style(name: str, body: DuplicateRequest | None = None) -> dict[str, Any]:
     """Duplicate a style (shadow or copy)."""
     try:
         new_name = body.new_name if body else None
@@ -150,9 +148,7 @@ async def export_style(name: str) -> Response:
         return Response(
             content=yaml_content,
             media_type="application/x-yaml",
-            headers={
-                "Content-Disposition": f'attachment; filename="{name}.yaml"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{name}.yaml"'},
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
