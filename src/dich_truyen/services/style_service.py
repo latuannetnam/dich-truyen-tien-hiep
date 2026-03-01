@@ -32,21 +32,25 @@ class StyleService:
         for name in self._manager.list_available():
             try:
                 template = self._manager.load(name)
-                styles.append({
-                    "name": template.name,
-                    "description": template.description,
-                    "tone": template.tone,
-                    "is_builtin": name in built_in,
-                    "style_type": self.get_style_type(name),
-                })
+                styles.append(
+                    {
+                        "name": template.name,
+                        "description": template.description,
+                        "tone": template.tone,
+                        "is_builtin": name in built_in,
+                        "style_type": self.get_style_type(name),
+                    }
+                )
             except Exception:
-                styles.append({
-                    "name": name,
-                    "description": "",
-                    "tone": "",
-                    "is_builtin": name in built_in,
-                    "style_type": "custom",
-                })
+                styles.append(
+                    {
+                        "name": name,
+                        "description": "",
+                        "tone": "",
+                        "is_builtin": name in built_in,
+                        "style_type": "custom",
+                    }
+                )
         return styles
 
     def get_style(self, name: str) -> dict[str, Any]:
@@ -129,9 +133,7 @@ class StyleService:
         """
         self._manager.delete(name)
 
-    def duplicate_style(
-        self, name: str, new_name: str | None = None
-    ) -> dict[str, Any]:
+    def duplicate_style(self, name: str, new_name: str | None = None) -> dict[str, Any]:
         """Duplicate a style.
 
         Args:
@@ -243,4 +245,3 @@ class StyleService:
         if self._manager.is_builtin(name):
             return "builtin"
         return "custom"
-

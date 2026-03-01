@@ -17,12 +17,8 @@ class StyleTemplate(BaseModel):
 
     name: str = Field(description="Style name")
     description: str = Field(description="Style description in Vietnamese")
-    guidelines: list[str] = Field(
-        default_factory=list, description="Translation guidelines"
-    )
-    vocabulary: dict[str, str] = Field(
-        default_factory=dict, description="Word/phrase mappings"
-    )
+    guidelines: list[str] = Field(default_factory=list, description="Translation guidelines")
+    vocabulary: dict[str, str] = Field(default_factory=dict, description="Word/phrase mappings")
     tone: str = Field(default="formal", description="Tone: formal, casual, archaic")
     examples: list[dict[str, str]] = Field(
         default_factory=list,

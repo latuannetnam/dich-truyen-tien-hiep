@@ -32,6 +32,7 @@ VALID_STYLE = {
 
 # --- create_style ---
 
+
 def test_create_style(svc: StyleService, styles_dir: Path) -> None:
     """Create saves file and returns dict."""
     result = svc.create_style(VALID_STYLE)
@@ -55,6 +56,7 @@ def test_create_style_builtin_name(svc: StyleService) -> None:
 
 # --- update_style ---
 
+
 def test_update_style(svc: StyleService) -> None:
     """Update changes custom style data."""
     svc.create_style(VALID_STYLE)
@@ -70,6 +72,7 @@ def test_update_builtin_rejected(svc: StyleService) -> None:
 
 # --- delete_style ---
 
+
 def test_delete_style(svc: StyleService, styles_dir: Path) -> None:
     """Delete removes the custom style."""
     svc.create_style(VALID_STYLE)
@@ -84,6 +87,7 @@ def test_delete_builtin_rejected(svc: StyleService) -> None:
 
 
 # --- duplicate_style ---
+
 
 def test_duplicate_builtin(svc: StyleService, styles_dir: Path) -> None:
     """Duplicate built-in creates a shadow file."""
@@ -102,6 +106,7 @@ def test_duplicate_custom_with_new_name(svc: StyleService, styles_dir: Path) -> 
 
 # --- generate_style ---
 
+
 @pytest.mark.asyncio
 async def test_generate_style(svc: StyleService) -> None:
     """Generate returns a valid style dict (mocked LLM)."""
@@ -112,6 +117,7 @@ async def test_generate_style(svc: StyleService) -> None:
 
 
 # --- import_style ---
+
 
 def test_import_style(svc: StyleService, styles_dir: Path) -> None:
     """Import valid YAML creates a style."""
@@ -151,6 +157,7 @@ tone: formal
 
 # --- export_style ---
 
+
 def test_export_style(svc: StyleService) -> None:
     """Export returns YAML string."""
     result = svc.export_style("tien_hiep")
@@ -159,6 +166,7 @@ def test_export_style(svc: StyleService) -> None:
 
 
 # --- get_style_type ---
+
 
 def test_get_style_type_builtin(svc: StyleService) -> None:
     """Built-in returns 'builtin'."""

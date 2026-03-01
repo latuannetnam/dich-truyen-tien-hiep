@@ -24,6 +24,7 @@ def manager(styles_dir: Path) -> StyleManager:
 
 # --- save ---
 
+
 def test_save_new_style(manager: StyleManager, styles_dir: Path) -> None:
     """Save creates a YAML file in the custom dir."""
     template = StyleTemplate(
@@ -60,6 +61,7 @@ def test_save_invalidates_cache(manager: StyleManager, styles_dir: Path) -> None
 
 # --- delete ---
 
+
 def test_delete_custom_style(manager: StyleManager, styles_dir: Path) -> None:
     """Delete removes the YAML file."""
     template = StyleTemplate(name="to_delete", description="bye", guidelines=["g"])
@@ -95,6 +97,7 @@ def test_delete_builtin_raises(manager: StyleManager) -> None:
 
 # --- invalidate_cache ---
 
+
 def test_invalidate_cache(manager: StyleManager) -> None:
     """Invalidate removes one entry from cache."""
     _ = manager.load("tien_hiep")
@@ -110,6 +113,7 @@ def test_invalidate_cache_missing_key_noop(manager: StyleManager) -> None:
 
 # --- is_builtin ---
 
+
 def test_is_builtin(manager: StyleManager) -> None:
     """Check built-in detection."""
     assert manager.is_builtin("tien_hiep") is True
@@ -117,6 +121,7 @@ def test_is_builtin(manager: StyleManager) -> None:
 
 
 # --- is_shadow ---
+
 
 def test_is_shadow(manager: StyleManager, styles_dir: Path) -> None:
     """Custom file with same name as built-in is a shadow."""
