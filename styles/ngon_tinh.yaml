@@ -1,0 +1,40 @@
+name: ngon_tinh
+description: Phong cách dịch ngôn tình nhẹ nhàng, sâu lắng, giàu cảm xúc; giữ trọn
+  nét lãng mạn, truyền tải tinh tế tâm tư nhân vật, tạo không khí dịu dàng và gần
+  gũi
+guidelines:
+- Giữ nguyên sắc thái cảm xúc và sự lãng mạn trong lời thoại cũng như miêu tả.
+- Ưu tiên sử dụng từ ngữ mềm mại, dịu dàng, tránh dùng từ ngữ quá mạnh hoặc khô khan.
+- Chú ý đến nhịp điệu câu văn, đảm bảo sự uyển chuyển, mượt mà và tự nhiên.
+- Truyền tải nội tâm nhân vật một cách tinh tế, sâu sắc, tránh phô trương hay quá
+  lố.
+- Lựa chọn từ vựng phù hợp với bối cảnh ngôn tình, tạo cảm giác gần gũi, ấm áp.
+- Giữ sự liền mạch, tránh cắt xén hoặc bỏ qua những chi tiết miêu tả tâm trạng.
+- Tôn trọng phong cách nguyên tác, nhưng linh hoạt điều chỉnh để phù hợp văn hóa người
+  đọc Việt.
+vocabulary:
+  心疼: xót xa
+  温柔: dịu dàng
+  深情: sâu lắng
+  依偎: nép vào
+  守护: chở che
+  怦然心动: trái tim rung động
+  眷恋: lưu luyến
+  思念: nhớ nhung
+  轻声细语: thì thầm khẽ khàng
+  柔和: nhẹ nhàng
+  温暖: ấm áp
+  痴情: si tình
+  牵挂: vương vấn
+  含情脉脉: đầy tình ý
+  默默守候: lặng lẽ chờ đợi
+tone: casual
+examples:
+- chinese: 他温柔地看着她，眼里满是深情。
+  vietnamese: Anh dịu dàng nhìn cô, trong mắt ngập tràn sâu lắng.
+- chinese: 她轻声细语地诉说着思念。
+  vietnamese: Cô thì thầm khẽ khàng, kể về nỗi nhớ nhung.
+- chinese: 即使世界荒芜，我也会默默守候你。
+  vietnamese: Dù thế giới có hoang vu, em vẫn lặng lẽ chờ đợi anh.
+- chinese: 他的守护让她感到温暖。
+  vietnamese: Sự chở che của anh khiến cô cảm thấy ấm áp.

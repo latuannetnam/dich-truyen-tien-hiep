@@ -1,21 +1,21 @@
-name: western_fantasy_magic
+name: tay_phuong
 description: Phong cách dịch thuật tiểu thuyết Huyền huyễn/ma pháp phương Tây, linh
   hoạt trong việc dịch tên nhân vật theo nguồn gốc, giữ nguyên không khí kỳ ảo.
 guidelines:
-- "Dịch tên nhân vật theo nguồn gốc: Tên phương Tây (Lucien, Evans, Simon, Joel) giữ
-  nguyên tiếng Anh; Tên có gốc Hán (艾丽萨, 艾文, 夏风) dịch phiên âm Hán-Việt (Ái
-  Lệ Tát, Ái Văn, Hạ Phong)."
-- "Dịch chức danh, cấp bậc sang tiếng Việt: Knight → Kỵ sĩ, Squire → Thị tùng, Guard
-  → Vệ binh, Sir → Ngài/Tước sĩ, Bishop → Giám mục."
-- "Dịch thuật ngữ vật phẩm sang tiếng Việt: Pyre → Giàn thiêu, Chainmail → Giáp xích,
-  Badge → Huy chương, Robe → Áo bào, Cross → Thập tự."
-- "Địa danh phương Tây: Giữ nguyên tên riêng + dịch loại hình. Ví dụ: Aderan Church
-  → Nhà thờ Aderan, Church Square → Quảng trường Nhà thờ."
-- "Thuật ngữ ma pháp giữ Hán-Việt hoặc dịch nghĩa: 魔法 → ma pháp, 圣光 → Thánh
-  quang, 天国 → Thiên quốc."
+- 'Dịch tên nhân vật theo nguồn gốc: Tên phương Tây (Lucien, Evans, Simon, Joel) giữ
+  nguyên tiếng Anh; Tên có gốc Hán (艾丽萨, 艾文, 夏风) dịch phiên âm Hán-Việt (Ái Lệ Tát,
+  Ái Văn, Hạ Phong).'
+- 'Dịch chức danh, cấp bậc sang tiếng Việt: Knight → Kỵ sĩ, Squire → Thị tùng, Guard
+  → Vệ binh, Sir → Ngài/Tước sĩ, Bishop → Giám mục.'
+- 'Dịch thuật ngữ vật phẩm sang tiếng Việt: Pyre → Giàn thiêu, Chainmail → Giáp xích,
+  Badge → Huy chương, Robe → Áo bào, Cross → Thập tự.'
+- 'Địa danh phương Tây: Giữ nguyên tên riêng + dịch loại hình. Ví dụ: Aderan Church
+  → Nhà thờ Aderan, Church Square → Quảng trường Nhà thờ.'
+- 'Thuật ngữ ma pháp giữ Hán-Việt hoặc dịch nghĩa: 魔法 → ma pháp, 圣光 → Thánh quang,
+  天国 → Thiên quốc.'
 - Sử dụng cấu trúc câu trang trọng, mạch lạc, phù hợp với không khí thần thoại.
 - Tránh dùng từ thuần Việt hiện đại, ưu tiên từ Hán-Việt hoặc từ có sắc thái cổ điển.
-- Dùng "hắn" thay cho "chàng" hoặc "anh ta". 
+- Dùng "hắn" thay cho "chàng" hoặc "anh ta".
 vocabulary:
   魔法: ma pháp
   魔导师: Ma đạo sư
@@ -43,7 +43,7 @@ vocabulary:
   徽章: Huy chương
   锁子甲: Giáp xích
   见习骑士侍从: Kỵ sĩ tập sự
-tone: formal
+tone: casual
 examples:
 - chinese: 见习骑士侍从西蒙来到教堂广场。
   vietnamese: Kỵ sĩ tập sự Simon đến Quảng trường Nhà thờ.
@@ -53,4 +53,3 @@ examples:
   vietnamese: Vị tế tư khoác bạch bào tay cầm huy chương bước lên bậc thang.
 - chinese: 守卫们穿着锁子甲守护着火刑架。
   vietnamese: Các vệ binh mặc giáp xích canh giữ giàn thiêu.
-
