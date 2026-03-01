@@ -175,6 +175,91 @@ export async function getStyle(name: string): Promise<StyleDetail> {
   return fetchJson<StyleDetail>(`${API_BASE}/styles/${name}`);
 }
 
+export async function createStyle(data: StyleDetail): Promise<StyleDetail> {
+  const res = await fetch(`${API_BASE}/styles`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function updateStyle(
+  name: string,
+  data: StyleDetail
+): Promise<StyleDetail> {
+  const res = await fetch(`${API_BASE}/styles/${name}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteStyle(name: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/styles/${name}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `API error: ${res.status}`);
+  }
+}
+
+export async function duplicateStyle(
+  name: string,
+  newName?: string
+): Promise<StyleDetail> {
+  const res = await fetch(`${API_BASE}/styles/${name}/duplicate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ new_name: newName ?? null }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function generateStyle(
+  description: string
+): Promise<StyleDetail> {
+  const res = await fetch(`${API_BASE}/styles/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ description }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function importStyle(yamlContent: string): Promise<StyleDetail> {
+  const res = await fetch(`${API_BASE}/styles/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ yaml_content: yamlContent }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export function getStyleExportUrl(name: string): string {
+  return `${API_BASE}/styles/${name}/export`;
+}
+
 // --- Export API ---
 
 export async function getExportStatus(bookId: string): Promise<ExportStatus> {

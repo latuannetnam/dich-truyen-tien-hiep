@@ -201,6 +201,7 @@ export interface StyleSummary {
   description: string;
   tone: string;
   is_builtin: boolean;
+  style_type: "builtin" | "custom" | "shadow";
 }
 
 /** Full style template. */
