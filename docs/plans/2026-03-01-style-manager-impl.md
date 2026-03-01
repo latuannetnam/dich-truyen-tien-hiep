@@ -1088,39 +1088,278 @@ git commit -m "feat(web): add style CRUD API client functions"
 
 ---
 
-## Task 5: Frontend — Style Editor Form Component
+## Task 5: Frontend — Shared UI Components
 
-> **UI/UX reference:** Use `@[/ui-ux-pro-max]` — Section 5 of design doc for accessibility, Lucide icons, dynamic lists, save button states, keyboard shortcuts.
+> **UI/UX source:** ui-ux-pro-max — web-interface (focus, forms, destructive actions), ux-guidelines (animation, reduced motion)
+
+**Files:**
+- Create: `web/src/components/styles/ConfirmDialog.tsx` (NEW)
+- Create: `web/src/hooks/useFocusTrap.ts` (NEW)
+
+**Step 1: Create `ConfirmDialog` component**
+
+Used for delete and reset-to-default confirmations. Must be a proper accessible dialog:
+
+```tsx
+// web/src/components/styles/ConfirmDialog.tsx
+"use client";
+
+import { useEffect, useRef } from "react";
+import { AlertTriangle } from "lucide-react";
+
+interface ConfirmDialogProps {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  confirmVariant?: "danger" | "default";
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export default function ConfirmDialog({
+  open, title, message, confirmLabel,
+  confirmVariant = "danger", onConfirm, onCancel,
+}: ConfirmDialogProps) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (open) cancelRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onCancel]);
+
+  if (!open) return null;
+
+  const confirmClass = confirmVariant === "danger"
+    ? "bg-red-600 hover:bg-red-700 text-white"
+    : "bg-blue-600 hover:bg-blue-700 text-white";
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-title"
+    >
+      <div
+        className="bg-[#1E293B] border border-white/10 rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <AlertTriangle size={20} className="text-amber-400 shrink-0" aria-hidden="true" />
+          <h3 id="confirm-title" className="text-lg font-semibold text-white">{title}</h3>
+        </div>
+        <p className="text-sm text-gray-300 mb-6">{message}</p>
+        <div className="flex gap-3 justify-end">
+          <button
+            ref={cancelRef}
+            onClick={onCancel}
+            className="px-4 py-2 text-sm rounded-lg bg-white/10 hover:bg-white/20
+                       text-gray-300 transition-colors cursor-pointer
+                       focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`px-4 py-2 text-sm rounded-lg transition-colors cursor-pointer
+                        focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none
+                        ${confirmClass}`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+Key UX rules applied:
+- `role="dialog"`, `aria-modal="true"`, `aria-labelledby` (accessibility)
+- Focus moves to Cancel button on open (safe default per destructive action UX)
+- `Escape` key closes dialog
+- Click-outside-to-cancel via backdrop `onClick`
+- `focus-visible:ring-2` on all buttons (web-interface Critical: never remove outline without replacement)
+- `cursor-pointer` on all interactive elements
+- Transition on hover (150-300ms range)
+
+**Step 2: Create `useFocusTrap` hook**
+
+```typescript
+// web/src/hooks/useFocusTrap.ts
+import { useEffect, useRef } from "react";
+
+export function useFocusTrap(active: boolean) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!active || !containerRef.current) return;
+
+    const container = containerRef.current;
+    const focusable = container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea, input:not([disabled]), select, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    // Focus first element on open
+    first?.focus();
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+
+    container.addEventListener("keydown", handler);
+    return () => container.removeEventListener("keydown", handler);
+  }, [active]);
+
+  return containerRef;
+}
+```
+
+Key UX rules applied:
+- Tab cycles within panel only (keyboard navigation: tab order matches visual order)
+- Shift+Tab wraps backwards
+- Auto-focuses first focusable element on open
+
+**Step 3: Commit**
+
+```bash
+git add web/src/components/styles/ConfirmDialog.tsx web/src/hooks/useFocusTrap.ts
+git commit -m "feat(web): add ConfirmDialog and useFocusTrap for Style Manager"
+```
+
+---
+
+## Task 6: Frontend — Style Editor Form Component
+
+> **UI/UX source:** ui-ux-pro-max — design doc §5 (all 10 subsections)
 
 **Files:**
 - Create: `web/src/components/styles/StyleEditorForm.tsx` (NEW)
 
 **Step 1: Create the form component**
 
-This is the core editing form used in CREATE, EDIT, and SHADOW-EDIT panel modes. It handles:
-- All style fields with proper `<label>` elements
-- Dynamic add/remove for guidelines, vocabulary, and examples
-- Inline validation (on blur)
-- Save button states (disabled/ready/saving)
-- "Generate with AI" collapsible section
-- Keyboard shortcut `Ctrl+S`
+Component props:
+```typescript
+interface StyleEditorFormProps {
+  initialData: StyleDetail | null;     // null = CREATE mode (empty)
+  mode: "create" | "edit" | "shadow-edit";
+  onSave: (data: StyleDetail) => Promise<void>;
+  onCancel: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+}
+```
 
-The component receives:
-- `initialData: StyleDetail | null` — null for CREATE mode, pre-filled for EDIT/SHADOW
-- `mode: "create" | "edit" | "shadow-edit"`
-- `onSave: (data: StyleDetail) => Promise<void>`
-- `onCancel: () => void`
-- `onDirtyChange: (dirty: boolean) => void`
+**Form layout (top to bottom):**
 
-Key implementation notes referencing design doc Section 5:
-- Use Lucide `Plus`, `Trash2`, `Sparkles` icons (§5.1)
-- All inputs have visible `<label htmlFor>` (§5.2)
-- Validation errors below each field with `aria-describedby` (§5.2, §5.8)
-- Dynamic list rows: `animate-fade-in` on add, each with `Trash2` remove icon (§5.4)
-- Tone field: `<select>` dropdown with options `formal|casual|archaic|poetic|literary` (§4)
-- Name field: editable only in CREATE mode (§2)
-- Save button: 3-state (disabled/ready/saving) per §5.5
-- `Ctrl+S` / `Cmd+S` shortcut to save (§5.7)
+| Section | Fields | Notes |
+|---------|--------|-------|
+| Header | Mode-specific banner | SHADOW-EDIT shows `PenLine` + "Customizing built-in style" |
+| Name | `<input>` | Editable only in CREATE; locked in EDIT/SHADOW |
+| Description | `<textarea rows={2}>` | Required, 5-200 chars |
+| Tone | `<select>` dropdown | Options: formal, casual, archaic, poetic, literary |
+| Guidelines | Dynamic list of `<input>` rows | At least 1 entry; `Plus`/`Trash2` icons |
+| Vocabulary | Dynamic key-value rows (two `<input>` per row) | Optional; responsive layout |
+| Examples | Dynamic pairs of `<textarea>` (Chinese + Vietnamese) | Optional; `Plus`/`Trash2` |
+| AI Generate | Collapsible section | `Sparkles` icon; only in CREATE mode |
+| Actions | Save / Cancel buttons | 3-state save button |
+
+**Critical UX implementation details (from ui-ux-pro-max searches):**
+
+1. **Every `<input>` / `<textarea>` / `<select>` MUST have a visible `<label>` with `htmlFor`** (web-interface Critical). No placeholder-only inputs.
+
+2. **Inline validation errors placed BELOW the field:**
+   ```tsx
+   <label htmlFor="style-name" className="...">Name</label>
+   <input id="style-name" aria-describedby={errors.name ? "name-error" : undefined} ... />
+   {errors.name && (
+     <span id="name-error" className="text-red-400 text-xs mt-1" role="alert">
+       {errors.name}
+     </span>
+   )}
+   ```
+   Uses `aria-describedby` + `role="alert"` (not just red color — color alone violates accessibility).
+
+3. **On submit with errors: auto-focus the first invalid field.** This is a High severity UX rule for inline errors.
+
+4. **Dynamic list add/remove (Guidelines, Vocabulary, Examples):**
+   - `[+ Add]` button with `Plus` icon at bottom of each list
+   - `Trash2` icon button to remove, with `aria-label="Remove guideline 3"`
+   - Last guideline cannot be removed (disable `Trash2`, show tooltip "At least one guideline required")
+   - New rows appear with `animate-fade-in` (ease-out, 200ms)
+   - Respect `prefers-reduced-motion`: disable animation if user prefers
+
+5. **Vocabulary table responsive handling:**
+   - Desktop: two columns side by side (Chinese + Vietnamese)
+   - Below 640px: stack vertically (full-width inputs)
+
+6. **Save button 3-state implementation:**
+   ```tsx
+   <button
+     disabled={!isDirty || hasErrors || isSaving}
+     className={`... cursor-pointer
+       ${(!isDirty || hasErrors) ? "opacity-50 cursor-not-allowed" : ""}
+       focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none`}
+   >
+     {isSaving ? (
+       <><Loader2 size={16} className="animate-spin" /> Saving...</>
+     ) : (
+       mode === "shadow-edit" ? "Save Customization" : "Save"
+     )}
+   </button>
+   ```
+
+7. **`Ctrl+S` / `Cmd+S` keyboard shortcut:**
+   ```tsx
+   useEffect(() => {
+     const handler = (e: KeyboardEvent) => {
+       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+         e.preventDefault();
+         if (isDirty && !hasErrors && !isSaving) handleSave();
+       }
+     };
+     window.addEventListener("keydown", handler);
+     return () => window.removeEventListener("keydown", handler);
+   }, [isDirty, hasErrors, isSaving]);
+   ```
+
+8. **AI Generate section (CREATE mode only):**
+   - Hidden by default, revealed by clicking `Sparkles` "Generate with AI" button
+   - Contains: description `<textarea>` + `[Generate]` button
+   - Generate button shows `Loader2` spinner while API call runs (~3-5s)
+   - On success: fills all form fields from response, marks form dirty
+   - On failure: inline error below textarea with retry guidance
+
+9. **`focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none` on ALL interactive elements** (web-interface Critical: never remove outline without replacement).
+
+10. **`prefers-reduced-motion` respected:**
+    ```css
+    @media (prefers-reduced-motion: reduce) {
+      .animate-fade-in { animation: none; }
+    }
+    ```
 
 **Step 2: Commit**
 
@@ -1131,49 +1370,146 @@ git commit -m "feat(web): add StyleEditorForm component"
 
 ---
 
-## Task 6: Frontend — Rewrite Styles Page with Panel Modes
+## Task 7: Frontend — Rewrite Styles Page with Panel Modes
 
-> **UI/UX reference:** Use `@[/ui-ux-pro-max]` design doc Section 2 for panel modes, Section 5 for Lucide icons, focus trap, keyboard shortcuts.
+> **UI/UX source:** ui-ux-pro-max — design doc §2 (panel modes), §5 (icons, focus, keyboard)
 
 **Files:**
 - Modify: `web/src/app/styles/page.tsx`
 
 **Step 1: Refactor the page**
 
-Rewrite `page.tsx` to support 4 panel modes (VIEW, CREATE, SHADOW-EDIT, EDIT):
+Rewrite `page.tsx` to support all 4 panel modes. The page structure:
 
-Key changes:
-- **State:** Add `panelMode: "view" | "create" | "edit" | "shadow-edit" | null` state
-- **Top action buttons:** "New Style" (`Plus` icon) + "Import YAML" (`Upload` icon) — use Lucide, not emoji
-- **Card badges:** Show `style_type` badge with color coding per §2
-- **Built-in card action:** "Customize" (`Wrench` icon) button on built-in cards
-- **VIEW mode panel header:** Conditional action buttons per style type (§2)
-- **EDIT modes:** Render `StyleEditorForm` inside the panel
-- **SHADOW-EDIT banner:** Info banner with `PenLine` icon (§2)
-- **Focus trap:** When panel opens, trap focus within. `Escape` key closes or guards.
-- **Unsaved changes guard:** Track dirty state, show confirmation dialog on backdrop/X click
-- **Panel width:** `max-w-xl` in edit modes, `max-w-lg` in view mode (§5.6)
-- **Panel exit animation:** Add `slideOutRight` keyframe (§5.9)
-- **After save/delete:** Toast via `useToast()`, re-fetch style list
-- **Import flow:** File input (hidden), reads YAML, calls `importStyle()`, opens panel in CREATE mode pre-filled
-- **Export:** Direct download link via `getStyleExportUrl()`
-
-**Step 2: Run the dev server and verify visually**
-
-```bash
-cd web && npm run dev
+```
+┌───────────────────────────────────────────────────┐
+│  Styles Manager                  [+ New] [Import] │
+├───────────────────────────────────────────────────┤
+│  [Search...]                                      │
+├───────────────────────────────────────────────────┤
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐             │
+│  │ Card    │ │ Card    │ │ Card    │             │
+│  │ [badge] │ │ [badge] │ │ [badge] │             │
+│  │         │ │ [Cust.] │ │         │             │
+│  └─────────┘ └─────────┘ └─────────┘             │
+│              ┌──────────────────────┐             │
+│              │  Slide-in Panel      │             │
+│              │  (VIEW/EDIT/CREATE)  │             │
+│              │                      │             │
+│              └──────────────────────┘             │
+└───────────────────────────────────────────────────┘
 ```
 
-Open `http://localhost:3000/styles` and verify:
-- Card grid renders with badges (built-in/custom/customized)
-- "New Style" button opens empty form panel
-- "Customize" on built-in opens shadow-edit panel
-- Edit/Delete/Export buttons appear correctly per style type
-- Form validation works (try submitting with empty name)
-- Save/Cancel/Escape work correctly
-- Toast notifications appear
+**Key implementation details:**
 
-**Step 3: Commit**
+1. **State management:**
+   ```tsx
+   const [panelMode, setPanelMode] = useState<"view" | "create" | "edit" | "shadow-edit" | null>(null);
+   const [selectedStyle, setSelectedStyle] = useState<StyleDetail | null>(null);
+   const [isDirty, setIsDirty] = useState(false);
+   const [isClosing, setIsClosing] = useState(false); // for exit animation
+   ```
+
+2. **Top action bar (Lucide icons, NO emojis):**
+   ```tsx
+   <button aria-label="Create new style"> <Plus size={18} /> New Style </button>
+   <button aria-label="Import YAML file"> <Upload size={18} /> Import YAML </button>
+   ```
+   Both buttons: `cursor-pointer`, `focus-visible:ring-2`, hover color transition 200ms.
+
+3. **Card badges per `style_type`:**
+   ```tsx
+   const badgeConfig = {
+     builtin:  { label: "built-in",    className: "bg-blue-500/20 text-blue-300" },
+     custom:   { label: "custom",      className: "bg-green-500/20 text-green-300" },
+     shadow:   { label: "customized",  className: "bg-amber-500/20 text-amber-300" },
+   };
+   ```
+   Each badge has `aria-label={`Style type: ${badge.label}`}` (screen reader context).
+
+4. **"Customize" button on built-in cards:**
+   ```tsx
+   {style.style_type === "builtin" && (
+     <button
+       onClick={(e) => { e.stopPropagation(); handleCustomize(style.name); }}
+       aria-label={`Customize ${style.name}`}
+       className="... cursor-pointer focus-visible:ring-2 ..."
+     >
+       <Wrench size={14} /> Customize
+     </button>
+   )}
+   ```
+   `e.stopPropagation()` prevents the card click (which opens VIEW mode).
+
+5. **VIEW mode panel header — conditional actions per style type:**
+   | Built-in | `[Customize]` `[Export]` |
+   | Custom | `[Edit]` `[Delete]` `[Export]` |
+   | Shadow | `[Edit]` `[Reset to Default]` `[Export]` |
+
+   All action buttons: icon + text, `aria-label`, `cursor-pointer`, `focus-visible:ring-2`.
+
+6. **Focus trap via `useFocusTrap` hook (from Task 5):**
+   ```tsx
+   const panelRef = useFocusTrap(panelMode !== null);
+   <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="panel-title"> ... </div>
+   ```
+
+7. **Escape key handling with dirty guard:**
+   ```tsx
+   useEffect(() => {
+     const handler = (e: KeyboardEvent) => {
+       if (e.key === "Escape" && panelMode) {
+         if (isDirty) {
+           setShowDiscardDialog(true); // "Discard unsaved changes?"
+         } else {
+           closePanel();
+         }
+       }
+     };
+     window.addEventListener("keydown", handler);
+     return () => window.removeEventListener("keydown", handler);
+   }, [panelMode, isDirty]);
+   ```
+
+8. **Panel close animation (§5.9):**
+   Add `slideOutRight` keyframe to the page or `globals.css`:
+   ```css
+   @keyframes slideOutRight {
+     from { transform: translateX(0); opacity: 1; }
+     to   { transform: translateX(100%); opacity: 0; }
+   }
+   ```
+   On close: set `isClosing=true`, apply `animation: slideOutRight 200ms ease-in`, then `setPanelMode(null)` after animation ends.
+   Respect `prefers-reduced-motion: reduce` — skip animation, close instantly.
+
+9. **Panel width toggle (§5.6):**
+   ```tsx
+   className={panelMode === "view" ? "max-w-lg" : "max-w-xl"}
+   ```
+
+10. **Import flow:**
+    ```tsx
+    <input type="file" accept=".yaml,.yml" ref={fileInputRef} className="hidden" onChange={handleImport} />
+    ```
+    `handleImport`: reads file as text → calls `importStyle()` to validate → on success opens panel in CREATE mode pre-filled → on error shows toast with specific error.
+
+11. **Export:** Direct `<a>` download link:
+    ```tsx
+    <a href={getStyleExportUrl(style.name)} download={`${style.name}.yaml`} ...>
+      <Download size={16} /> Export YAML
+    </a>
+    ```
+
+12. **Delete / Reset confirmation — uses `ConfirmDialog` from Task 5:**
+    - Delete: title "Delete Style", message `Delete '${name}'? This cannot be undone.`, confirmLabel "Delete", variant `danger`
+    - Reset: title "Reset to Default", message `Reset '${name}' to default? Your customizations will be removed.`, confirmLabel "Reset", variant `danger`
+
+13. **After save/delete operations:**
+    - Call `useToast().showSuccess("Style saved")` or `showSuccess("Style deleted")`
+    - Re-fetch `getStyles()` to refresh card grid
+    - Switch panel to VIEW mode (after save) or close panel (after delete)
+
+**Step 2: Commit**
 
 ```bash
 git add web/src/app/styles/page.tsx
@@ -1182,7 +1518,7 @@ git commit -m "feat(web): full Style Manager with CRUD, shadow, import/export"
 
 ---
 
-## Task 7: Verification — Run Full Test Suite
+## Task 8: Verification — Full Test Suite + Browser Testing
 
 **Step 1: Run all Python tests**
 
@@ -1190,7 +1526,7 @@ git commit -m "feat(web): full Style Manager with CRUD, shadow, import/export"
 uv run pytest tests/test_style_manager.py tests/test_style_service.py tests/test_style_api.py tests/test_services.py -v
 ```
 
-Expected: All PASS, including the 3 pre-existing style tests in `test_services.py`.
+Expected: All PASS, including 3 pre-existing style tests in `test_services.py`.
 
 **Step 2: Lint and format**
 
@@ -1199,22 +1535,52 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-**Step 3: Run the full app and verify end-to-end**
+**Step 3: TypeScript check**
 
+```bash
+cd web && npx tsc --noEmit
+```
+
+Expected: No type errors.
+
+**Step 4: Run the full app and verify end-to-end**
+
+Start the app:
 ```bash
 uv run dich-truyen ui
 ```
 
-1. Open `http://localhost:3000/styles`
-2. **Test CREATE:** Click "New Style" → fill form → Save → verify card appears
-3. **Test EDIT:** Click the new card → Edit → change description → Save → verify updated
-4. **Test DELETE:** Click the card → Delete → confirm → verify card removed
-5. **Test CUSTOMIZE:** Click a built-in card → Customize → change a guideline → Save → verify badge changes to "customized"
-6. **Test RESET:** Click the customized card → Reset to Default → confirm → verify badge reverts to "built-in"
-7. **Test IMPORT:** Click "Import YAML" → select a `.yaml` file → verify form pre-fills → Save
-8. **Test EXPORT:** Click any card → Export YAML → verify file downloads
+Open `http://localhost:3000/styles` and run through this checklist:
 
-**Step 4: Final commit**
+**Functional tests:**
+1. **CREATE:** Click "New Style" → fill all fields → Save → verify new card appears with green "custom" badge
+2. **EDIT:** Click the new card → Edit → change description → Save → verify description updated
+3. **DELETE:** Click the card → Delete → confirm dialog appears → confirm → verify card removed + toast
+4. **CUSTOMIZE:** Click a built-in card → Customize → change a guideline → Save → verify badge changes to orange "customized"
+5. **RESET:** Click the customized card → Reset to Default → confirm → verify badge reverts to blue "built-in"
+6. **IMPORT:** Click "Import YAML" → select a `.yaml` file → verify form pre-fills → review → Save
+7. **EXPORT:** Click any card → Export YAML → verify `.yaml` file downloads
+8. **AI GENERATE:** Click "New Style" → "Generate with AI" → type description → Generate → verify form fills
+
+**UX/Accessibility tests (from ui-ux-pro-max pre-delivery checklist):**
+
+| # | Check | How to verify |
+|---|-------|---------------|
+| 1 | No emoji icons visible | Visually scan — all icons should be Lucide SVG |
+| 2 | All buttons have `cursor-pointer` | Hover over every button — cursor should change |
+| 3 | Focus-visible rings on tab | Press Tab repeatedly — each interactive element shows blue ring |
+| 4 | Escape closes panel | Open panel → press Escape → panel closes |
+| 5 | Escape with dirty form shows dialog | Edit something → press Escape → "Discard changes?" appears |
+| 6 | Focus trapped in panel | Open panel → Tab through all elements → focus should NOT leave panel |
+| 7 | ConfirmDialog has focus on Cancel | Click Delete → dialog opens → Cancel button is focused |
+| 8 | All form inputs have visible labels | Check Name, Description, Tone, Guidelines all have `<label>` text |
+| 9 | Validation errors below fields | Leave Name blank → blur → red error text appears below field |
+| 10 | Hover transitions are smooth (not instant) | Hover over cards, buttons — should be 200ms color transition |
+| 11 | Badge on each card | Every card shows a badge (built-in / custom / customized) |
+| 12 | Ctrl+S saves in edit mode | Open edit → change something → Ctrl+S → style saved |
+| 13 | Toast appears after save/delete | Save or delete → green toast at bottom-right, auto-dismiss 3s |
+
+**Step 5: Final commit**
 
 ```bash
 git add -A
@@ -1230,7 +1596,8 @@ git commit -m "feat: full Style Manager — CRUD, shadow, LLM generate, import/e
 | 1 | `StyleManager` CRUD (core) | `test_style_manager.py` — 10 tests |
 | 2 | `StyleService` CRUD (service) | `test_style_service.py` — 14 tests |
 | 3 | API routes (FastAPI) | `test_style_api.py` — 11 tests |
-| 4 | Frontend API + Types | (type-checked by TypeScript) |
-| 5 | `StyleEditorForm` component | (visual verification) |
-| 6 | Styles page rewrite | (visual verification) |
-| 7 | Full verification | All tests + end-to-end |
+| 4 | Frontend API + Types | TypeScript `tsc --noEmit` |
+| 5 | `ConfirmDialog` + `useFocusTrap` | Browser verification |
+| 6 | `StyleEditorForm` component | Browser verification |
+| 7 | Styles page rewrite | Browser verification |
+| 8 | Full verification | 35+ unit tests + 13-point browser checklist |
