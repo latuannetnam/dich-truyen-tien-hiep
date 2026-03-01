@@ -349,9 +349,17 @@ export default function StylesPage() {
           {filtered.map((style) => {
             const badge = badgeConfig[style.style_type] || badgeConfig.custom;
             return (
-              <button
+              <div
                 key={style.name}
+                role="button"
+                tabIndex={0}
                 onClick={() => openView(style.name)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openView(style.name);
+                  }
+                }}
                 className="text-left bg-[var(--bg-surface)] border border-[var(--border-default)]
                   rounded-xl p-5 cursor-pointer hover:border-[var(--border-hover)]
                   hover:shadow-[var(--shadow-md)] transition-all duration-200 group
@@ -404,7 +412,7 @@ export default function StylesPage() {
                     </button>
                   )}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
