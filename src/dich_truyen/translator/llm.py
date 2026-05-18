@@ -248,7 +248,7 @@ Quy tắc:
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.3,
-            max_tokens=100,
+            # max_tokens=1000, # disalbe this to allow for longer titles if needed
         )
 
     def _build_polish_system_prompt(self, style_prompt: str) -> str:
