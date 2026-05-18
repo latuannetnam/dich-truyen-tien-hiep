@@ -8,6 +8,9 @@
 @REM uv run dich-truyen pipeline --url https://www.piaotia.com/html/3/3759/index.html --chapters 1-5 --style tay_phuong --format pdf
 @REM uv run dich-truyen pipeline --book-dir .\books\3759-indexhtml\ --chapters 1-2 --style tay_phuong --format pdf --translate-only --force
 
+@REM Check env variables
+uv run dich-truyen --env-file .\.env -v style list
+
 @REM Dai Dao Tranh Phong
-uv run dich-truyen pipeline --url https://www.piaotia.com/html/2/2408/index.html --chapters 1-5 --format pdf --translate-only --force
-uv run dich-truyen pipeline --url https://www.piaotia.com/html/2/2408/index.html --translate-only --force
+uv run dich-truyen -v pipeline --url https://www.piaotia.com/html/2/2408/index.html --chapters 1-5 --format pdf --translate-only --force
+uv run dich-truyen -v pipeline --url https://www.piaotia.com/html/2/2408/index.html --translate-only --force

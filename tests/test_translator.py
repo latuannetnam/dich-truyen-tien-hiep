@@ -1,7 +1,7 @@
 """Unit tests for the translation module."""
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from dotenv import load_dotenv
@@ -388,6 +388,22 @@ class TestLLMClient:
         assert "测试文本" in user
         assert "glossary terms" in user
         assert "previous context" in user
+
+    @pytest.mark.asyncio
+    async def test_complete_rejects_length_truncated_response(self, config):
+        """Test length-truncated LLM responses are not accepted as complete."""
+        client = LLMClient(config)
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].finish_reason = "length"
+        mock_response.choices[0].message.content = "partial translation"
+
+        mock_openai_client = MagicMock()
+        mock_openai_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        client._client = mock_openai_client
+
+        with pytest.raises(RuntimeError, match="truncated"):
+            await client.complete("system", "user", max_retries=0)
 
 
 # Integration tests (require API)

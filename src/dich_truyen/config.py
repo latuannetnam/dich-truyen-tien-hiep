@@ -207,13 +207,45 @@ class AppConfig(BaseSettings):
     @classmethod
     def load(cls, env_file: Optional[Path] = None) -> "AppConfig":
         """Load configuration from environment and .env file."""
+        import os
+
         from dotenv import load_dotenv
 
-        if env_file and env_file.exists():
-            load_dotenv(env_file)
+        logger = structlog.get_logger()
+
+        if env_file:
+            env_file = Path(env_file).resolve()
+            logger.debug("env_file_argument", env_file=str(env_file), exists=env_file.exists())
+            if env_file.exists():
+                load_dotenv(env_file, override=True)
+                logger.debug("load_dotenv_called", env_file=str(env_file))
+            else:
+                logger.warning("env_file_not_found", env_file=str(env_file))
+                load_dotenv()
+                logger.debug(
+                    "load_dotenv_fallback_to_default",
+                    resolved_path=str(Path.cwd() / ".env"),
+                )
         else:
             # Try to find .env in current directory or parent directories
-            load_dotenv()
+            resolved_path = Path.cwd() / ".env"
+            logger.debug(
+                    "load_dotenv_no_env_file",
+                    resolved_path=str(resolved_path),
+                    exists=resolved_path.exists(),
+                )
+            load_dotenv(override=True)
+            logger.debug("load_dotenv_default_search_completed")
+
+        # Debug: log raw environment values after loading .env
+        logger = structlog.get_logger()
+        logger.debug(
+            "env_settings_loaded",
+            OPENAI_BASE_URL=os.environ.get("OPENAI_BASE_URL", "NOT SET"),
+            OPENAI_MODEL=os.environ.get("OPENAI_MODEL", "NOT SET"),
+            OPENAI_MAX_TOKENS=os.environ.get("OPENAI_MAX_TOKENS", "NOT SET"),
+            TRANSLATION_CHUNK_SIZE=os.environ.get("TRANSLATION_CHUNK_SIZE", "NOT SET"),
+        )
 
         return cls(
             llm=LLMConfig(),

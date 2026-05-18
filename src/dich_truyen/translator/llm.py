@@ -112,7 +112,14 @@ class LLMClient:
                     temperature=temperature or self.config.temperature,
                     max_tokens=max_tokens or self.config.max_tokens,
                 )
-                return response.choices[0].message.content.strip()
+                choice = response.choices[0]
+                if choice.finish_reason == "length":
+                    raise RuntimeError(
+                        "LLM response was truncated by the output token limit. "
+                        "Reduce TRANSLATION_CHUNK_SIZE or increase the model max_tokens setting."
+                    )
+
+                return choice.message.content.strip()
 
             except Exception as e:
                 last_error = e
