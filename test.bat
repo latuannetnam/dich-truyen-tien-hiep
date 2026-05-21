@@ -11,6 +11,11 @@
 @REM Check env variables
 uv run dich-truyen --env-file .\.env -v style list
 
-@REM Dai Dao Tranh Phong
+@REM Re-translate for chapters 1-5, and export to pdf
 uv run dich-truyen -v pipeline --url https://www.piaotia.com/html/2/2408/index.html --chapters 1-5 --format pdf --translate-only --force
+
+@REM Re-translate for all
 uv run dich-truyen -v pipeline --url https://www.piaotia.com/html/2/2408/index.html --translate-only --force
+
+@REM Only translate, no format, no export. Also re-translate if status=error
+uv run dich-truyen -v pipeline --url https://www.piaotia.com/html/2/2408/index.html --translate-only
