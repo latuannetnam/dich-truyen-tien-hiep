@@ -36,9 +36,8 @@ LEAKED_WORDS_MAP = {
 }
 
 # English words to flag for manual review (could be false positives if replaced automatically)
-FLAG_WORDS = [
-    "the", "to", "in", "on", "at", "for"
-]
+FLAG_WORDS = ["the", "to", "in", "on", "at", "for"]
+
 
 def sanitize_file(file_path: Path, dry_run: bool = False) -> bool:
     """Sanitizes a single translation file.
@@ -68,7 +67,10 @@ def sanitize_file(file_path: Path, dry_run: bool = False) -> bool:
     for pattern, replacement in LEAKED_WORDS_MAP.items():
         matches = re.findall(pattern, new_content)
         if matches:
-            replacements_made.append(f"{pattern.strip(r'\\b')} -> {replacement} ({len(matches)} occurrences)")
+            clean_pattern = pattern.strip(r"\\b")
+            replacements_made.append(
+                f"{clean_pattern} -> {replacement} ({len(matches)} occurrences)"
+            )
             new_content = re.sub(pattern, replacement, new_content)
             modified = True
 
@@ -103,11 +105,12 @@ def sanitize_file(file_path: Path, dry_run: bool = False) -> bool:
 
     return modified or bool(flagged_words)
 
+
 def sanitize_directory(book_dir: str, dry_run: bool = False) -> None:
     """Sanitizes all translating/translated files inside a book directory."""
     path = Path(book_dir)
     target_dirs = [path / "translating", path / "translated"]
-    
+
     txt_files = []
     for t_dir in target_dirs:
         if t_dir.exists():
@@ -122,8 +125,9 @@ def sanitize_directory(book_dir: str, dry_run: bool = False) -> None:
     for f_path in sorted(txt_files, key=lambda p: int(p.stem) if p.stem.isdigit() else 999999):
         if sanitize_file(f_path, dry_run):
             flagged_count += 1
-            
+
     print(f"\nScan complete. Flagged/modified {flagged_count} out of {len(txt_files)} files.")
+
 
 if __name__ == "__main__":
     if hasattr(sys.stdout, "reconfigure"):
@@ -138,7 +142,7 @@ if __name__ == "__main__":
 
     target = sys.argv[1]
     is_dry_run = "--dry-run" in sys.argv
-    
+
     target_path = Path(target)
     if target_path.is_file():
         sanitize_file(target_path, is_dry_run)
