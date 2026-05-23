@@ -1,6 +1,6 @@
 ---
 name: translate-error-chapters
-description: Use when a book has chapters with "error" status in book.json and they need high-quality Vietnamese translation using style guidelines.
+description: Use when a book has chapters with "error" or "crawled" status in book.json and they need high-quality Vietnamese translation using style guidelines. Defaults to the `tien_hiep` style (direct path: `d:\latuan\Programming\dich-truyen-tien-hiep\styles\tien_hiep.yaml`) if not specified.
 ---
 
 # Translate Error Chapters
@@ -12,9 +12,9 @@ Systematically resolve translation pipeline errors by reading the raw Chinese so
 > **Use Model Capability Only:** You must perform the translation directly in-context using your own advanced language model capabilities. Do **NOT** run project python scripts, command-line translation tools (such as `uv run dich-truyen translate`), or any project codebase functionality to perform the translation. All translations must be generated solely by your model execution.
 
 ## When to Use
-- **Trigger:** A chapter in `books/<book-dir>/book.json` has `"status": "error"`.
+- **Trigger:** A chapter in `books/<book-dir>/book.json` has `"status": "error"` or `"status": "crawled"`.
 - **Pre-requisite:** The raw Chinese text exists in `books/<book-dir>/raw/`.
-- **Pre-requisite:** A translation style guideline exists (e.g. `styles/tien_hiep.yaml`).
+- **Pre-requisite:** A translation style guideline exists. If not specified in the prompt, default to `tien_hiep` style (direct path: `styles\tien_hiep.yaml`).
 
 Do **NOT** use when:
 - The chapter status is already `"translated"` (unless explicitly asked to re-translate).
@@ -24,17 +24,17 @@ Do **NOT** use when:
 
 ## Core Pattern & Procedural Steps
 
-### Step 1: Scan for Errors
-1. Run a lightweight, Unicode-safe Python command (using `json.dumps()` to guarantee only basic ASCII characters are printed to avoid `UnicodeEncodeError` on Windows consoles using CP1252/ASCII encoding defaults) to cleanly fetch all error chapters in the book index `books/<book-dir>/book.json`:
+### Step 1: Scan for Errors or Crawled Chapters
+1. Run a lightweight, Unicode-safe Python command (using `json.dumps()` to guarantee only basic ASCII characters are printed to avoid `UnicodeEncodeError` on Windows consoles using CP1252/ASCII encoding defaults) to cleanly fetch all error or crawled chapters in the book index `books/<book-dir>/book.json`:
    ```bash
-   uv run python -c "import json; d = json.load(open('books/<book-dir>/book.json', encoding='utf-8')); print(json.dumps([(c['index'], c['id'], c['title_cn']) for c in d['chapters'] if c['status'] == 'error']))"
+   uv run python -c "import json; d = json.load(open('books/<book-dir>/book.json', encoding='utf-8')); print(json.dumps([(c['index'], c['id'], c['title_cn']) for c in d['chapters'] if c['status'] in ('error', 'crawled')]))"
    ```
 2. Note their sequential `"index"` field values (which are 1-based sequential identifiers), IDs, and raw titles.
 
 ### Step 2: Locate Source and Style Rules
 1. Map the chapter's metadata `"index"` field value to the corresponding raw `.txt` file in `books/<book-dir>/raw/`.
    * **Rule:** The raw file name prefix is the 4-digit zero-padded representation of the `"index"` field value (e.g., if `"index"` is `683`, the raw file matches `0683_*.txt`).
-2. Read the designated style guide (e.g., `styles/tien_hiep.yaml`). Extract rules from `guidelines`, term mappings from `vocabulary`, and `tone`.
+2. Read the designated style guide. If not specified in the prompt, use the default `tien_hiep` style at `d:\latuan\Programming\dich-truyen-tien-hiep\styles\tien_hiep.yaml`. Extract rules from `guidelines`, term mappings from `vocabulary`, and `tone`.
 
 ### Step 3: Layout Check & Translation
 1. **Pre-flight Layout Analysis**: Inspect the first 500 characters of the raw text. Check for scrambling (e.g. jumbled sentences, anti-scraping alternating paragraphs, or garbage ads). If scrambled, reconstruct the coherent text first.
