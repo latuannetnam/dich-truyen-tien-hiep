@@ -33,7 +33,7 @@ Do **NOT** use when:
 
 ### Step 2: Establish the Coordination Queue
 1. In your thought process log, construct a simple state tracker of all target chapters:
-   * **Pending:** Chapters waiting to be translated.
+   * **Pending:** Chapters waiting to be translated, tracking sequential index, id, and raw `title_cn` from `book.json`.
    * **Active:** Chapters currently assigned to a running sub-agent task (maximum of 3).
    * **Completed:** Chapters successfully translated, saved, and updated.
    * **Failed:** Chapters where a sub-agent returned an error status.
@@ -72,7 +72,7 @@ Do **NOT** use when:
      > * **Example:** If updating chapter index `683`, you must pass `682` to the script:
      
      ```bash
-     uv run python scripts/update_book_metadata.py "books/<book-dir>" <index_minus_1> "<title_vi>"
+     uv run python scripts/update_book_metadata.py "books/<book-dir>" <index_minus_1> "<title_vi>" "<title_cn>"
      ```
      
      > [!IMPORTANT]
@@ -106,18 +106,30 @@ You must read the following files to get all necessary context, guidelines, and 
 2. **Style Guidelines:** Read `[Absolute Path to styles/tien_hiep.yaml]` for tone and translation rules.
 3. **Glossary:** Read `[Absolute Path to books/<book-dir>/glossary.csv]` for terminology.
 4. **Previous Chapter Context:** Read `[Absolute Path to books/<book-dir>/translating/<index-1>.txt]` if it exists, or fallback to the last 1,000 characters of `[Absolute Path to books/<book-dir>/translated/<index-1>.txt]` to match pronouns (xưng hô) and name flows.
+5. **Chinese Chapter Title:** The original Chinese title for this chapter is `[Chinese Chapter Title]` (from `book.json`).
 
 ## Your Task Instructions:
 1. **Load Inputs:** Use the `view_file` tool to read all of the files specified above.
 2. **Layout & Scrambling Check:** Inspect the first 500 characters of the raw source. Check for scrambling, anti-scraping paragraphs, or ads, and reconstruct a clean text if necessary.
-3. **Perform Translation:** Translate the entire Chinese source text into natural, high-quality Vietnamese prose.
-   * Apply all genre guidelines and vocabulary rules from the style guidelines and glossary.
-   * Maintain consistent name/pronoun styles matching the previous chapter context.
+3. **Translate Chapter Title & Content:**
+   * **Title Translation Rule:** Translate the provided Chinese Chapter Title (`[Chinese Chapter Title]`) into a clean Vietnamese chapter title `title_vi` according to these strict rules:
+     1. Convert the chapter number prefix: `第[N]章` must be translated to `Chương [N]`.
+     2. Translate the remaining Chinese characters of the chapter title into natural, capitalized Sino-Vietnamese (Hán-Việt) or Vietnamese meaning (matching Tiên Hiệp/Xianxia style guidelines). Capitalize the first letter of every word (Title Case) (e.g. `天魔传说` -> `Thiên Ma Truyền Thuyết`).
+     3. Combine the number prefix and translated title with a single space as a separator: `Chương [N] [Translated Title]` (e.g., `Chương 1715 Thiên Ma Truyền Thuyết`). Do NOT use colons (`:`), hyphens/dashes (`-` or `–`), or extra brackets around the chapter number.
+     4. Set the `title_vi` field in your JSON output to this exact value.
+   * **Translate Content:** Translate the entire Chinese source text into natural, high-quality Vietnamese prose.
+     * Apply all genre guidelines and vocabulary rules from the style guidelines and glossary.
+     * Maintain consistent name/pronoun styles matching the previous chapter context.
 4. **Adhere to the Lexical Sandbox Rule:**
    * **Strict Constraint:** DO NOT leak any English conjunctions, prepositions, or helper words into the translated Vietnamese output.
    * **Programmatic Scan:** Before writing the file, you must explicitly scan your entire draft translation for common leaked English words (including: `but`, `here`, `now`, `okay`, `the`, `and`, `or`, `while`, `before`, `after`, `of`, `to`, `in`, `on`, `at`, `for`, `with`). If any are found, immediately replace them with their proper Vietnamese equivalents.
 5. **Write Target File:** Write the complete translated Vietnamese text directly to `[Absolute Path to books/<book-dir>/translating/<index>.txt]` using the `write_to_file` tool (with `Overwrite` set to true if replacing).
-6. **Self-Review:** Read the written file to verify formatting matches, no raw Chinese remains, and that the Lexical Sandbox Rule was strictly adhered to.
+   * **Title Formatting in Content Rule:** The very first line of this file must contain the translated chapter title, formatted exactly as `# [title_vi]` (where `[title_vi]` is the translated chapter title, e.g., `# Chương 1715 Thiên Ma Truyền Thuyết`).
+   * Ensure there is a blank line immediately after this first line.
+6. **Self-Review:** Read the written file to verify:
+   * The first line matches `# [title_vi]` exactly.
+   * No raw Chinese remains.
+   * The Lexical Sandbox Rule was strictly adhered to.
 
 ## Output Format:
 When complete, return ONLY a clean JSON block in the following format:
