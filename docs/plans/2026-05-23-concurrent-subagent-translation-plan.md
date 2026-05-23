@@ -1,3 +1,27 @@
+# Concurrent Sub-agent Translation Skill Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Update the `.agents/skills/translate-error-chapters/SKILL.md` skill to utilize the Antigravity sub-agent feature with a 3-agent continuous sliding window workflow.
+
+**Architecture:** The Main Agent acts as a pure, lightweight coordinator tracking a 3-agent sliding window in its context. It programmatically dispatches concurrent sub-agents using the verified `invoke_subagent` tool and processes their JSON-metadata responses to programmatically update `book.json` using `update_book_metadata.py`.
+
+**Tech Stack:** Antigravity Agent Framework (with `invoke_subagent` tool), Markdown, Python (for metadata update and json validation).
+
+---
+
+### Task 1: Rewrite translate-error-chapters Skill
+
+**Files:**
+- Modify: `.agents/skills/translate-error-chapters/SKILL.md`
+
+- [ ] **Step 1: Replace contents of SKILL.md**
+
+Rewrite the entire skill file to outline Orchestrator Mode, continuous sliding window concurrency tracking, and the verified `invoke_subagent` signature.
+
+Write the following content to `d:\latuan\Programming\dich-truyen-tien-hiep\.agents\skills\translate-error-chapters\SKILL.md`:
+
+```markdown
 ---
 name: translate-error-chapters
 description: Use when a book has chapters with "error" or "crawled" status in book.json and they need high-quality Vietnamese translation using style guidelines. Spawns up to 3 concurrent context-isolated sub-agents using a continuous sliding window to process translations safely and efficiently.
@@ -64,23 +88,10 @@ Do **NOT** use when:
 2. **Handle Incoming Metadata Responses:** As each sub-agent returns its JSON result:
    - **If Success:**
      1. Verify the file exists. Run `view_file` reading only the first 3 lines of `books/<book-dir>/translating/<index>.txt` to verify successful generation without flooding your context.
-     
-     > [!WARNING]
-     > **Serialized Updates & Index Offset Mapping:**
-     > * **Serialized Lock:** To prevent race conditions and file stream crashes on Windows, you MUST run the update commands sequentially (one at a time) rather than in parallel shell streams.
-     > * **Mathematical Index Mapping:** The update script expects the **0-based list array index** of the chapter, which is exactly the sequential `"index"` field value **minus 1** (i.e. `0-based index = 1-based Chapter Index - 1`).
-     > * **Example:** If updating chapter index `683`, you must pass `682` to the script:
-     
-     ```bash
-     uv run python scripts/update_book_metadata.py "books/<book-dir>" <index_minus_1> "<title_vi>"
-     ```
-     
-     > [!IMPORTANT]
-     > **Audit-on-Write Verification Rule:**
-     > Immediately inspect the stdout printout of the update script. The script prints:
-     > `Successfully updated Chapter <Index> (<ID>):`
-     > You MUST confirm that the `<Index>` in the printout matches your target chapter index. If it does not match (due to array alignment drift or off-by-one calculations), you must immediately restore `book.json` from git or backup and correct your index offset argument.
-     
+     2. Update the chapter's metadata in `book.json` safely using `update_book_metadata.py` with the **0-based list array index** (which is `index - 1`):
+        ```bash
+        uv run python scripts/update_book_metadata.py "books/<book-dir>" <index_minus_1> "<title_vi>"
+        ```
      3. Verify `book.json` syntax integrity:
         ```bash
         uv run python -c "import json; json.load(open('books/<book-dir>/book.json', encoding='utf-8'))"
@@ -105,19 +116,17 @@ You must read the following files to get all necessary context, guidelines, and 
 1. **Raw Chinese Text:** Read the raw source at `[Absolute Path to Raw Chinese File]`
 2. **Style Guidelines:** Read `[Absolute Path to styles/tien_hiep.yaml]` for tone and translation rules.
 3. **Glossary:** Read `[Absolute Path to books/<book-dir>/glossary.csv]` for terminology.
-4. **Previous Chapter Context:** Read `[Absolute Path to books/<book-dir>/translating/<index-1>.txt]` if it exists, or fallback to the last 1,000 characters of `[Absolute Path to books/<book-dir>/translated/<index-1>.txt]` to match pronouns (xưng hô) and name flows.
+4. **Previous Chapter Context:** Read the last 1,000 characters of `[Absolute Path to books/<book-dir>/translating/<index-1>.txt]` to match pronouns (xưng hô) and name flows.
 
 ## Your Task Instructions:
 1. **Load Inputs:** Use the `view_file` tool to read all of the files specified above.
 2. **Layout & Scrambling Check:** Inspect the first 500 characters of the raw source. Check for scrambling, anti-scraping paragraphs, or ads, and reconstruct a clean text if necessary.
 3. **Perform Translation:** Translate the entire Chinese source text into natural, high-quality Vietnamese prose.
    * Apply all genre guidelines and vocabulary rules from the style guidelines and glossary.
+   * **Lexical Sandbox Rule:** DO NOT leak any English conjunctions, prepositions, or helper words (e.g., "but", "before", "not", "after", "while") into the translated Vietnamese output.
    * Maintain consistent name/pronoun styles matching the previous chapter context.
-4. **Adhere to the Lexical Sandbox Rule:**
-   * **Strict Constraint:** DO NOT leak any English conjunctions, prepositions, or helper words into the translated Vietnamese output.
-   * **Programmatic Scan:** Before writing the file, you must explicitly scan your entire draft translation for common leaked English words (including: `but`, `here`, `now`, `okay`, `the`, `and`, `or`, `while`, `before`, `after`, `of`, `to`, `in`, `on`, `at`, `for`, `with`). If any are found, immediately replace them with their proper Vietnamese equivalents.
-5. **Write Target File:** Write the complete translated Vietnamese text directly to `[Absolute Path to books/<book-dir>/translating/<index>.txt]` using the `write_to_file` tool (with `Overwrite` set to true if replacing).
-6. **Self-Review:** Read the written file to verify formatting matches, no raw Chinese remains, and that the Lexical Sandbox Rule was strictly adhered to.
+4. **Write Target File:** Write the complete translated Vietnamese text directly to `[Absolute Path to books/<book-dir>/translating/<index>.txt]` using the `write_to_file` tool (with `Overwrite` set to true if replacing).
+5. **Self-Review:** Read the written file to verify formatting matches, no raw Chinese remains, and that the Lexical Sandbox Rule was strictly adhered to.
 
 ## Output Format:
 When complete, return ONLY a clean JSON block in the following format:
@@ -149,3 +158,17 @@ If an error occurs or the translation cannot be completed, return:
 - **Modern vocabulary slip-ups:** Translating classical terms using modern everyday Vietnamese words (e.g., translating `长老` literally instead of "Trưởng lão").
 - **English conjunction leakage:** Accidentally leaving words like "But", "Before", "Not" in the Vietnamese translation.
 - **Fragile text search-and-replace on book.json:** Trying to edit the massive JSON file using regex, which causes syntax corruption. Always use `update_book_metadata.py` with the **0-based list array index** (`index - 1`).
+```
+```
+
+---
+
+### Task 2: Validate the Markdown File
+
+- [ ] **Step 1: Check markdown layout and syntax**
+
+Verify that `.agents/skills/translate-error-chapters/SKILL.md` is syntactically sound and contains no placeholders.
+Run a quick search using `grep_search` to ensure no `[TBD]` or `[TODO]` remains.
+
+Run: `grep_search` on `.agents/skills/translate-error-chapters/SKILL.md` looking for `TBD` or `TODO`.
+Expected: 0 matches.
