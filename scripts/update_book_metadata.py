@@ -2,18 +2,23 @@
 """Programmatic utility to update chapter metadata in book.json without fragile text find-and-replace."""
 
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 
-def update_metadata(book_dir: str, chapter_index: int, title_vi: str) -> None:
+def update_metadata(
+    book_dir: str, chapter_index: int, title_vi: str, title_cn: Optional[str] = None
+) -> None:
     """Updates book.json metadata for a specific chapter.
 
     Args:
         book_dir: Path to the book directory (e.g. books/15112-indexhtml).
         chapter_index: 0-based index of the chapter to update.
         title_vi: The translated Vietnamese title for the chapter.
+        title_cn: Optional original Chinese title to normalize the output.
     """
     book_path = Path(book_dir) / "book.json"
     if not book_path.exists():
@@ -45,6 +50,23 @@ def update_metadata(book_dir: str, chapter_index: int, title_vi: str) -> None:
     old_title_vi = chapter.get("title_vi")
     old_status = chapter.get("status")
 
+    # Run normalization guard if title_cn is provided
+    if title_cn:
+        ch_num_match = re.search(r"第\s*(\d+)\s*章", title_cn)
+        if ch_num_match:
+            num = ch_num_match.group(1)
+            # Strip any "Chương <num>" prefix and colons/hyphens/dashes/spaces
+            cleaned = re.sub(
+                rf"^Chương\s*{num}\s*[\s:\u2013\u2014\-]*\s*",
+                "",
+                title_vi,
+                flags=re.IGNORECASE,
+            )
+            cleaned = re.sub(r"^[\s:\u2013\u2014\-]+", "", cleaned).strip()
+            # Normalize internal spaces
+            cleaned = re.sub(r"\s+", " ", cleaned)
+            title_vi = f"Chương {num} {cleaned}"
+
     chapter["title_vi"] = title_vi
     chapter["status"] = "translated"
     chapter["translated_at"] = datetime.utcnow().isoformat().replace("+00:00", "") + "Z"
@@ -70,7 +92,7 @@ if __name__ == "__main__":
             pass
 
     if len(sys.argv) < 4:
-        print("Usage: python update_book_metadata.py <book_dir> <chapter_index> <title_vi>")
+        print("Usage: python update_book_metadata.py <book_dir> <chapter_index> <title_vi> [<title_cn>]")
         sys.exit(1)
 
     book_dir_arg = sys.argv[1]
@@ -81,4 +103,5 @@ if __name__ == "__main__":
         sys.exit(1)
 
     title_vi_arg = sys.argv[3]
-    update_metadata(book_dir_arg, chapter_index_arg, title_vi_arg)
+    title_cn_arg = sys.argv[4] if len(sys.argv) > 4 else None
+    update_metadata(book_dir_arg, chapter_index_arg, title_vi_arg, title_cn_arg)
