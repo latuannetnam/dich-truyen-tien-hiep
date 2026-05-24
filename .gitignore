@@ -78,8 +78,9 @@ books/
 .uv/
 uv.lock
 # Others
-.claude
 .agent/
+.agent.bak/
+AGENTS.md.bak
 
 # Next.js
 web/node_modules/
@@ -87,3 +88,8 @@ web/.next/
 
 # Others
 scratch/*
+scan_result.json
+.agents/scratch/search_repair.py
+.agents/scratch/verify_translation.py
+book_valid.txt
+.claude/settings.local.json
