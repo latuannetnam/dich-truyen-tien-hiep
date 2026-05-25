@@ -87,9 +87,8 @@ web/node_modules/
 web/.next/
 
 # Others
+.agents/scratch/*
 scratch/*
 scan_result.json
-.agents/scratch/search_repair.py
-.agents/scratch/verify_translation.py
 book_valid.txt
 .claude/settings.local.json
